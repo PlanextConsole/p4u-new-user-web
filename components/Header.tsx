@@ -43,7 +43,7 @@ export default function Header({ onCartOpen }: HeaderProps) {
     { image: services,   label: "Services",       href: "/service"        },
     { image: social,     label: "Socio",          href: "/socio"          },
     { icon: Calendar,    label: "Booking",        href: "/booking"        },
-    { image: classified, label: "Classified Ads", href: "/classified-ads" },
+    { image: classified, label: "Classified Ads", href: "/classified" },
   ];
 
   const pathname = usePathname();
