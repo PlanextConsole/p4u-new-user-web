@@ -177,7 +177,7 @@ function SidebarContent({
     <div className="w-full space-y-3"> 
       <div className="rounded-2xl overflow-hidden bg-white shadow-sm border border-gray-100">
         <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100">
-          <span className="text-xs font-black tracking-[0.15em] uppercase text-gray-500">Categories</span>
+          <span className="text-xs font-semibold tracking-[0.15em] uppercase text-gray-500">Categories</span>
           <ChevronRight className="w-4 h-4 text-gray-300" />
         </div>
         <div className="px-4 py-3 space-y-2.5">
@@ -209,7 +209,7 @@ function SidebarContent({
         </div>
       </div> 
       <div className="rounded-2xl px-4 py-3 bg-white shadow-sm border border-gray-100">
-        <p className="text-xs font-black tracking-[0.15em] uppercase mb-3 flex items-center gap-2 text-gray-500">
+        <p className="text-xs font-semibold tracking-[0.15em] uppercase mb-3 flex items-center gap-2 text-gray-500">
           <Tag className="w-3.5 h-3.5 text-amber-400" /> Offers
         </p>
         <label className="flex items-center gap-3 cursor-pointer">
@@ -239,7 +239,7 @@ function SidebarContent({
         </label>
       </div> 
       <div className="rounded-2xl px-4 py-3 bg-white shadow-sm border border-gray-100">
-        <p className="text-xs font-black tracking-[0.15em] uppercase mb-3 flex items-center gap-2 text-gray-500">
+        <p className="text-xs font-semibold tracking-[0.15em] uppercase mb-3 flex items-center gap-2 text-gray-500">
           <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" /> Rating
         </p>
         <div className="space-y-2.5">

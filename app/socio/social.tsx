@@ -85,16 +85,36 @@ function PostCard({ post: p }: { post: typeof POSTS[0] }) {
           <p className="text-sm font-bold text-gray-900 truncate">{p.user} {p.co && <span className="font-normal text-gray-500 text-xs">{p.co}</span>}</p>
           <p className="text-[11px] text-gray-400">{p.location} · {p.time}</p>
         </div>
-        <div className="relative">
-          <button onClick={() => setShowMenu(v => !v)} className="p-1 text-gray-400 hover:text-gray-700"><MoreHorizontal className="w-4 h-4" /></button>
-          {showMenu && (
-            <div className="absolute right-0 top-7 bg-white rounded-xl shadow-lg border border-gray-100 z-10 w-40 overflow-hidden">
-              {["Save post","Share","Report","Unfollow"].map(item => (
-                <button key={item} onClick={() => setShowMenu(false)} className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-gray-50 transition">{item}</button>
-              ))}
-            </div>
-          )}
-        </div>
+       <div className="relative">
+  <button
+    onClick={() => setShowMenu(true)}
+    className="p-1 text-gray-400 hover:text-gray-700"
+  >
+    <MoreHorizontal className="w-4 h-4" />
+  </button>
+    
+  {showMenu && (
+    <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50">
+    <div className="bg-white rounded-2xl shadow-2xl w-80 overflow-hidden text-base">
+        {["Report", "Go to post", "Share to...", "Copy link", "Embed", "About this account"].map(item => (
+          <button
+            key={item}
+            onClick={() => setShowMenu(false)}
+            className="w-full px-4 py-3 text-center border-b last:border-b-0 hover:bg-gray-50"
+          >
+            {item}
+          </button>
+        ))}
+        <button
+          onClick={() => setShowMenu(false)}
+          className="w-full px-4 py-3 text-center text-red-500 hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )}
+</div>
       </div>
       <div className="relative w-full aspect-[4/3] bg-gray-100">
         <img src={p.image} alt="post" className="w-full h-full object-cover" />
@@ -295,7 +315,7 @@ export function ExploreSection() {
   const [search, setSearch] = useState("");
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6">
+    <div className="max-w-xxl mx-auto px-4 py-6">
       <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm mb-5">
         <Search className="w-4 h-4 text-gray-400 shrink-0" />
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search people, tags, places…" className="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400" />
@@ -522,7 +542,7 @@ export function NotificationsSection() {
   const toggleFollow = (id: number) => setFollowed(p => ({ ...p, [id]: !p[id] }));
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-6">
+    <div className="max-w-xxl   px-4 py-6">
       <div className="flex items-center justify-between mb-5">
         <h1 className="text-lg font-semibold text-gray-900">Notifications</h1>
         <button onClick={() => setNotifs([])} className="text-xs text-gray-400 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 transition">Clear all</button>
@@ -685,7 +705,7 @@ export function ProfileSection() {
   const [selectedImg, setSelectedImg] = useState<string | null>(null);
 
   return (
-    <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6">
+    <div className="max-w-xxl mx-auto px-3 sm:px-4 py-6">
       {selectedImg && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center" onClick={() => setSelectedImg(null)}>
           <img src={selectedImg} alt="" className="max-w-lg max-h-[80vh] rounded-2xl object-cover" />
@@ -796,7 +816,7 @@ function EditProfilePanel({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-xl mx-auto px-4 py-8">
+      <div className="max-w-xl  px-4 py-8">
         {saved && <div className="mb-4 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 text-sm text-teal-700 font-medium flex items-center gap-2"><Check className="w-4 h-4" />Profile updated successfully!</div>}
         <div className="flex items-center gap-4 mb-8">
           <div className="relative cursor-pointer" onClick={() => fileRef.current?.click()}>
@@ -970,7 +990,7 @@ function RewardsPanel() {
       <h2 className="text-base font-semibold text-gray-900 mb-6">Reward Points</h2>
       <div className="rounded-2xl text-white p-6 mb-5 text-center" style={{ background: TEAL }}>
         <Star className="w-8 h-8 mx-auto mb-2 fill-white" />
-        <p className="text-3xl font-black">{pts.toLocaleString()}</p>
+        <p className="text-3xl font-semibold">{pts.toLocaleString()}</p>
         <p className="text-sm text-white/80 mt-1">Total Points</p>
       </div>
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -1134,7 +1154,7 @@ export function SettingsSection({ onNavigate }: { onNavigate?: (s: Section) => v
           <button className="text-xs text-red-400 hover:text-red-600 underline underline-offset-2">Log out</button>
         </div>
       </div>
-      <div className={`flex-1 bg-gray-50 overflow-hidden flex flex-col ${!mobilePanelOpen ? "hidden md:flex" : "flex"}`}>
+      <div className={`flex-1 bg-white overflow-hidden flex flex-col ${!mobilePanelOpen ? "hidden md:flex" : "flex"}`}>
         <div className="md:hidden flex items-center gap-2 px-4 py-3 bg-white border-b border-gray-100 shrink-0">
           <button onClick={() => setMobilePanelOpen(false)} className="p-1"><ArrowLeft className="w-5 h-5 text-gray-600" /></button>
           <span className="text-sm font-bold text-gray-800 capitalize">{activeMenu?.replace(/_/g," ")}</span>

@@ -210,7 +210,7 @@ function ListingCard({ item }: { item: Listing }) {
           <p style={{
             margin: 0,
             color: "#ffffff",
-            fontWeight: 800,
+            fontWeight: 700,
             fontSize: "0.9rem", 
             letterSpacing: "-0.01em",
           }}>
