@@ -1,16 +1,16 @@
-import Header from '@/components/Header';
-import Navigation from '@/components/Navigation';
-import HeroSlider from '@/components/HeroSlider';
-import ServiceCards from '@/components/ServiceCards';
-import BestProducts from '@/components/BestProducts';
-import BrandSections from '@/components/BrandSections';
-import PickupSection from '@/components/PickupSection';
-import TopServicer from '@/components/TopServicer';
-import MostBookedServices from '@/components/MostBookedServices';
-import SubscriptionNewsletter from '@/components/SubscriptionNewsletter';
-import Footer from '@/components/Footer';
-import ClassifiedResale from '@/components/ClassifiedResale';
-import ReelsVideo from '@/components/ReelsVideo';
+import Header from '@/components/layout/Header';
+import Navigation from '@/components/layout/Navigation';
+import HeroSlider from '@/components/home/HeroSlider';
+import ServiceCards from '@/components/home/ServiceCards';
+import BestProducts from '@/components/home/BestProducts';
+import BrandSections from '@/components/home/BrandSections';
+import PickupSection from '@/components/home/PickupSection';
+import TopServicer from '@/components/catalog/TopServicer';
+import MostBookedServices from '@/components/catalog/MostBookedServices';
+import SubscriptionNewsletter from '@/components/home/SubscriptionNewsletter';
+import Footer from '@/components/layout/Footer';
+import ClassifiedResale from '@/components/catalog/ClassifiedResale';
+import ReelsVideo from '@/components/catalog/ReelsVideo';
 
 export default function Home() {
   return (

@@ -1,16 +1,17 @@
 "use client";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { contentApi } from "@/lib/api/content";
 
-import ambulance from "../images/home-banner-bottom/ambulace.png";
-import help from "../images/home-banner-bottom/help.png";
-import urgent from "../images/home-banner-bottom/urgent.png";
+import ambulance from "../../images/home-banner-bottom/ambulace.png";
+import help from "../../images/home-banner-bottom/help.png";
+import urgent from "../../images/home-banner-bottom/urgent.png";
 import type { StaticImageData } from "next/image";
 
 interface CardType {
-  id: number;
+  id: number | string;
   label: string;
-  image: StaticImageData;
+  image: StaticImageData | string;
   imageBg: string;
   icon: string;
   desc: string;
@@ -19,13 +20,19 @@ interface CardInnerProps {
   card: CardType;
   mobile: boolean;
 }
-const cards: CardType[] = [
 
+const BG_COLORS = [
+  "linear-gradient(135deg, #b2dfd6 0%, #d6f0ea 50%, #c5e8e0 100%)",
+  "linear-gradient(135deg, #fde8c0 0%, #fff5e0 50%, #fde8c0 100%)",
+  "linear-gradient(135deg, #b8d4ed 0%, #dceefa 50%, #b8d4ed 100%)",
+];
+
+const FALLBACK_CARDS: CardType[] = [
   {
     id: 1,
     label: "Emergency",
     image: ambulance,
-    imageBg: "linear-gradient(135deg, #b2dfd6 0%, #d6f0ea 50%, #c5e8e0 100%)",
+    imageBg: BG_COLORS[0],
     icon: "🚑",
     desc: "Immediate response, anytime",
   },
@@ -33,7 +40,7 @@ const cards: CardType[] = [
     id: 2,
     label: "Urgent",
     image: urgent,
-    imageBg: "linear-gradient(135deg, #fde8c0 0%, #fff5e0 50%, #fde8c0 100%)",
+    imageBg: BG_COLORS[1],
     icon: "⚡",
     desc: "Fast-track priority care",
   },
@@ -41,7 +48,7 @@ const cards: CardType[] = [
     id: 3,
     label: "Help",
     image: help,
-    imageBg: "linear-gradient(135deg, #b8d4ed 0%, #dceefa 50%, #b8d4ed 100%)",
+    imageBg: BG_COLORS[2],
     icon: "🤝",
     desc: "We're always here for you",
   },
@@ -205,6 +212,23 @@ function CardInner({ card, mobile }: CardInnerProps) {
 }
 
 export default function EmergencyCards() {
+  const [cards, setCards] = useState<CardType[]>([]);
+
+  useEffect(() => {
+    contentApi.getServiceHighlights().then((items) => {
+      if (items.length) {
+        setCards(items.map((sh, i) => ({
+          id: sh.id,
+          label: sh.title,
+          image: sh.imageUrl || ambulance,
+          imageBg: BG_COLORS[i % BG_COLORS.length],
+          icon: sh.iconUrl || ["🚑", "⚡", "🤝"][i % 3],
+          desc: sh.description || "",
+        })));
+      }
+    }).catch(() => {});
+  }, []);
+
   return (
     <div className="w-full py-8 px-4 xl:px-6 max-w-[1400px] mx-auto">
       <style>{`

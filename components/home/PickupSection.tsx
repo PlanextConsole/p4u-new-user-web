@@ -1,63 +1,57 @@
 'use client';
 
 import Image from 'next/image';
-import { useState, useEffect } from 'react'; 
-import homeTheater from '../images/pickup-section/home-theater.png';
-import sportShoes from '../images/pickup-section/sport-shoes.png';
-import galaxy from '../images/pickup-section/galaxy.png';
-import utilityTable from '../images/pickup-section/utility-table.png'; 
-import menSlipper from '../images/pickup-section/men-slipper.png';
-import menTshirt from '../images/pickup-section/men-tshirt.png';
-import womenEthnic from '../images/pickup-section/women-ethnic.png';
-import casualShirt from '../images/pickup-section/casual-shirt.png'; 
-import faceWash from '../images/pickup-section/face-wash.png';
-import bathSoap from '../images/pickup-section/bath-soap.png';
-import skincare from '../images/pickup-section/skin-care.png';
-import rubberBands from '../images/pickup-section/rubber-bands.png';
+import { useState, useEffect } from 'react';
+import { contentApi } from '@/lib/api/content';
+import homeTheater from '../../images/pickup-section/home-theater.png';
+import sportShoes from '../../images/pickup-section/sport-shoes.png';
+import galaxy from '../../images/pickup-section/galaxy.png';
+import utilityTable from '../../images/pickup-section/utility-table.png';
+import menSlipper from '../../images/pickup-section/men-slipper.png';
+import menTshirt from '../../images/pickup-section/men-tshirt.png';
+import womenEthnic from '../../images/pickup-section/women-ethnic.png';
+import casualShirt from '../../images/pickup-section/casual-shirt.png';
+import faceWash from '../../images/pickup-section/face-wash.png';
+import bathSoap from '../../images/pickup-section/bath-soap.png';
+import skincare from '../../images/pickup-section/skin-care.png';
+import rubberBands from '../../images/pickup-section/rubber-bands.png';
 
-const sections = [
-  {
-    title: 'Pick up where you left off',
-    products: [
-      { image: homeTheater, name: 'Cushion covers, bedsheets & more' },
-      { image: sportShoes, name: 'Sport Shoes' },
-      { image: galaxy, name: 'Galaxy Refrigerator' },
-      { image: utilityTable, name: 'Utility Table' },
-    ],
-  },
-  {
-    title: 'Pick up where you left off',
-    products: [
-      { image: menSlipper, name: "Men's Slipper & Flips" },
-      { image: menTshirt, name: "Men's T-Shirt" },
-      { image: womenEthnic, name: "Women's Ethnic Sets" },
-      { image: casualShirt, name: 'Casual Shirts' },
-    ],
-  },
-  {
-    title: 'Hair & Skin Care for Monsoon',
-    products: [
-      { image: faceWash, name: 'Face Wash' },
-      { image: bathSoap, name: 'Bath Soap' },
-      { image: skincare, name: 'Skin Care' },
-      { image: rubberBands, name: 'Rubber Bands' },
-    ],
-  },
-];
+type SectionItem = { title: string; products: { image: any; name: string }[] };
 
 export default function PickupSection() {
+  const [sections, setSections] = useState<SectionItem[]>([]);
   const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    contentApi.getFeaturedProducts().then((items) => {
+      if (items.length) {
+        const grouped: Record<string, { image: any; name: string }[]> = {};
+        items.forEach((fp) => {
+          const sec = fp.section || 'Featured';
+          if (!grouped[sec]) grouped[sec] = [];
+          grouped[sec].push({ image: fp.imageUrl, name: fp.name });
+        });
+        const apiSections = Object.entries(grouped).map(([title, products]) => ({
+          title,
+          products,
+        }));
+        setSections(apiSections);
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 1024);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
-    
+
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  if (sections.length === 0) return null;
 
   return (
  <div className=" mx-auto max-w-[1400px] px-3 sm:px-4 md:px-6 mt-2 sm:mt-3 md:mt-4  "> 

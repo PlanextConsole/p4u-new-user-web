@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Heart, MessageCircle, Send, Bookmark, MoreHorizontal,
   Search, X, PlusCircle, Phone, Video, Info, Image as ImageIcon,
@@ -7,13 +7,14 @@ import {
   Bell, Archive, Activity, Globe, Clock, Star, FileText,
   MessageSquare, Tag, Share2, UserPlus, ThumbsUp,
   UserX, Check, Edit3, Home, Compass, Film, Settings,
-  User, Menu, Grid, Play, Layers
+  User, Menu, Grid, Play, Layers, Loader2
 } from "lucide-react";
+import { socialApi } from "@/lib/api/social";
 
 const TEAL = "linear-gradient(135deg,#0d9488,#14b8a6)";
 const TEAL_SOLID = "#0d9488";
 
-const FILTER_CSS = {
+const FILTER_CSS: Record<string, string> = {
   Normal:    "none",
   Clarendon: "contrast(1.2) saturate(1.35)",
   Gingham:   "brightness(1.05) hue-rotate(-10deg)",
@@ -27,68 +28,54 @@ const FILTER_CSS = {
 };
 const FILTER_NAMES = Object.keys(FILTER_CSS);
 
-// ── DATA ──────────────────────────────────────────────────────────────────────
-const STORIES = [
-  { id: 1, mine: true, label: "Your Story", avatar: null },
-  { id: 2, mine: false, label: "vijay_s", avatar: "https://i.pravatar.cc/80?img=7" },
-  { id: 3, mine: false, label: "kokila_d", avatar: "https://i.pravatar.cc/80?img=8" },
-  { id: 4, mine: false, label: "planext4u", avatar: "https://i.pravatar.cc/80?img=9" },
-  { id: 5, mine: false, label: "ravi_k", avatar: "https://i.pravatar.cc/80?img=10" },
-  { id: 6, mine: false, label: "priya_m", avatar: "https://i.pravatar.cc/80?img=11" },
-  { id: 7, mine: false, label: "arun_dev", avatar: "https://i.pravatar.cc/80?img=12" },
-];
+// ── TYPES for local UI state ────────────────────────────────────────────────────
+interface StoryItem { id: number | string; mine: boolean; label: string; avatar: string | null; mediaUrl?: string }
+interface PostItem { id: number | string; user: string; co: string; avatarA: string; avatarB: string | null; location: string; time: string; image: string; likes: number; comments: number; shares: number; caption: string; hashtags: string }
+interface ContactItem { id: number; name: string; avatar: string; lastMsg: string; time: string; unread: boolean }
+interface NotificationItem { id: number; group: string; user: string; text: string; time: string; avatar: string; action: string }
+interface SearchItem { id: number; name: string; sub: string; avatar: string; verified: boolean }
+interface SuggestionItem { id: number; name: string; sub: string; avatar: string }
+interface UserProfileData { name: string; username: string; bio: string; website: string; posts: number; followers: string; following: string; avatar: string; images: string[]; verified: boolean }
+interface ExplorePostItem { id: number; image: string; likes: number; comments: number }
+interface ReelItem { id: number; username: string; caption: string; video: string; likes: number; comments: number; shares: number; avatar: string; user: string }
 
-const POSTS = [
-  { id: 1, user: "vijay_sivakumar", co: "with kokila_devi", avatarA: "https://i.pravatar.cc/40?img=7", avatarB: "https://i.pravatar.cc/40?img=8", location: "Pondicherry", time: "2h", image: "https://images.unsplash.com/photo-1501854140801-50d01698950b?w=600&q=80", likes: 3241, comments: 87, shares: 34, caption: "Golden hour magic 🌅✨", hashtags: "#travel #sunset #pondicherry #vibes" },
-  { id: 2, user: "planext4u", co: "", avatarA: "https://i.pravatar.cc/40?img=9", avatarB: null, location: "Chennai", time: "5h", image: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=600&q=80", likes: 1893, comments: 54, shares: 12, caption: "Morning rituals ☕ | Good vibes only", hashtags: "#coffee #morning #lifestyle #chennai" },
-  { id: 3, user: "ravi_krishnan", co: "", avatarA: "https://i.pravatar.cc/40?img=10", avatarB: null, location: "Bangalore", time: "8h", image: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&q=80", likes: 5672, comments: 213, shares: 89, caption: "Ride or die 🏍️🔥", hashtags: "#bikelife #moto #bangalore #rides" },
-  { id: 4, user: "priya_mehta", co: "", avatarA: "https://i.pravatar.cc/40?img=11", avatarB: null, location: "Mumbai", time: "12h", image: "https://images.unsplash.com/photo-1568702846914-96b305d2aaeb?w=600&q=80", likes: 2114, comments: 67, shares: 19, caption: "Nature always wins 🌿", hashtags: "#nature #green #mumbai #photography" },
-];
+/** Map an API Post to the shape our PostCard expects */
+function mapApiPostToPostItem(p: { id: string | number; userName?: string; userAvatar?: string; content?: string; imageUrl?: string; likeCount: number; commentCount: number; createdAt: string }): PostItem {
+  return {
+    id: p.id,
+    user: p.userName ?? "unknown",
+    co: "",
+    avatarA: p.userAvatar ?? "",
+    avatarB: null,
+    location: "",
+    time: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "",
+    image: p.imageUrl ?? "",
+    likes: p.likeCount,
+    comments: p.commentCount,
+    shares: 0,
+    caption: p.content ?? "",
+    hashtags: "",
+  };
+}
 
-const CONTACTS = [
-  { id: 1, name: "Planext4U", avatar: "https://i.pravatar.cc/40?img=9", lastMsg: "These 5 websites are amazing!", time: "now", unread: true },
-  { id: 2, name: "Vijay Sivakumar", avatar: "https://i.pravatar.cc/40?img=7", lastMsg: "Let's plan the trip 🌴", time: "1h", unread: false },
-  { id: 3, name: "Kokila Devi", avatar: "https://i.pravatar.cc/40?img=8", lastMsg: "Sent you a reel 🎬", time: "3h", unread: true },
-  { id: 4, name: "Ravi Krishnan", avatar: "https://i.pravatar.cc/40?img=10", lastMsg: "Saw your story!", time: "5h", unread: false },
-  { id: 5, name: "Priya Mehta", avatar: "https://i.pravatar.cc/40?img=11", lastMsg: "Coffee tomorrow? ☕", time: "1d", unread: false },
-];
+/** Map an API Story to the shape our StoryCircle expects */
+function mapApiStoryToStoryItem(s: { id: string | number; userName?: string; userAvatar?: string; mediaUrl?: string }): StoryItem {
+  return {
+    id: s.id,
+    mine: false,
+    label: s.userName ?? "user",
+    avatar: s.userAvatar ?? null,
+    mediaUrl: s.mediaUrl,
+  };
+}
 
-const NOTIFICATIONS = [
-  { id: 1, group: "Yesterday", user: "vijay_sivakumar", text: "liked your photo.", time: "18h", avatar: "https://i.pravatar.cc/40?img=7", action: "View" },
-  { id: 2, group: "Yesterday", user: "kokila_devi", text: "started following you.", time: "22h", avatar: "https://i.pravatar.cc/40?img=8", action: "Follow" },
-  { id: 3, group: "This Week", user: "planext4u", text: "mentioned you in a comment.", time: "3d", avatar: "https://i.pravatar.cc/40?img=9", action: "View" },
-  { id: 4, group: "This Week", user: "ravi_krishnan", text: "liked your reel.", time: "4d", avatar: "https://i.pravatar.cc/40?img=10", action: "View" },
-  { id: 5, group: "Earlier", user: "priya_mehta", text: "commented: 'Beautiful shot! 😍'", time: "1w", avatar: "https://i.pravatar.cc/40?img=11", action: "View" },
-];
-
-const RECENT_SEARCHES = [
-  { id: 1, name: "planext4u", sub: "Planext4U · 4M followers", avatar: "https://i.pravatar.cc/40?img=9", verified: true },
-  { id: 2, name: "vijay_sivakumar", sub: "Photography · 12K followers", avatar: "https://i.pravatar.cc/40?img=7", verified: false },
-  { id: 3, name: "kokila.official", sub: "Lifestyle · 89K followers", avatar: "https://i.pravatar.cc/40?img=8", verified: true },
-];
-
-const SUGGESTIONS = [
-  { id: 1, name: "arun_devs", sub: "Follows vijay_s", avatar: "https://i.pravatar.cc/40?img=12" },
-  { id: 2, name: "meena_art", sub: "Suggested for you", avatar: "https://i.pravatar.cc/40?img=13" },
-  { id: 3, name: "kumar_photo", sub: "Follows planext4u", avatar: "https://i.pravatar.cc/40?img=14" },
-  { id: 4, name: "deepa_travels", sub: "New to P4U", avatar: "https://i.pravatar.cc/40?img=15" },
-];
-
-// USER PROFILES DATA
-const USER_PROFILES = {
-  "vijay_sivakumar": { name: "Vijay Sivakumar", username: "vijay_sivakumar", bio: "📸 Photographer | 🌅 Sunset chaser | Pondicherry based", website: "vijay.photos", posts: 248, followers: "12K", following: "340", avatar: "https://i.pravatar.cc/150?img=7", images: Array.from({length:9},(_,i)=>`https://picsum.photos/seed/${i+20}/400/400`), verified: false },
-  "kokila_devi": { name: "Kokila Devi", username: "kokila_devi", bio: "✨ Lifestyle | 🌸 Beauty | 💄 Fashion lover", website: "kokila.in", posts: 412, followers: "89K", following: "520", avatar: "https://i.pravatar.cc/150?img=8", images: Array.from({length:9},(_,i)=>`https://picsum.photos/seed/${i+30}/400/400`), verified: true },
-  "planext4u": { name: "Planext4U Pvt Ltd", username: "planext4u", bio: "🚀 Tech company | 💡 Innovation | Chennai & Beyond", website: "planext4u.com", posts: 1048, followers: "4M", following: "24", avatar: "https://i.pravatar.cc/150?img=9", images: Array.from({length:9},(_,i)=>`https://picsum.photos/seed/${i+50}/400/400`), verified: true },
-  "ravi_krishnan": { name: "Ravi Krishnan", username: "ravi_krishnan", bio: "🏍️ Biker | ⚙️ Engineer | Bangalore roads forever", website: "", posts: 167, followers: "5.6K", following: "211", avatar: "https://i.pravatar.cc/150?img=10", images: Array.from({length:9},(_,i)=>`https://picsum.photos/seed/${i+60}/400/400`), verified: false },
-  "priya_mehta": { name: "Priya Mehta", username: "priya_mehta", bio: "🌿 Nature lover | 📷 Amateur photographer | Mumbai", website: "", posts: 93, followers: "2.1K", following: "178", avatar: "https://i.pravatar.cc/150?img=11", images: Array.from({length:9},(_,i)=>`https://picsum.photos/seed/${i+70}/400/400`), verified: false },
-  "arun_devs": { name: "Arun Dev", username: "arun_devs", bio: "💻 Full Stack Dev | 🎮 Gamer | Code by day, game by night", website: "arundev.io", posts: 54, followers: "1.2K", following: "89", avatar: "https://i.pravatar.cc/150?img=12", images: Array.from({length:9},(_,i)=>`https://picsum.photos/seed/${i+40}/400/400`), verified: false },
-  "meena_art": { name: "Meena Artist", username: "meena_art", bio: "🎨 Digital artist | 🖌️ Illustrations | DMs open for commissions", website: "meena.art", posts: 312, followers: "18K", following: "430", avatar: "https://i.pravatar.cc/150?img=13", images: Array.from({length:9},(_,i)=>`https://picsum.photos/seed/${i+80}/400/400`), verified: false },
-  "kumar_photo": { name: "Kumar Photography", username: "kumar_photo", bio: "📸 Wedding & Portrait Photographer | Chennai", website: "", posts: 580, followers: "22K", following: "310", avatar: "https://i.pravatar.cc/150?img=14", images: Array.from({length:9},(_,i)=>`https://picsum.photos/seed/${i+90}/400/400`), verified: true },
-  "deepa_travels": { name: "Deepa Travels", username: "deepa_travels", bio: "✈️ Solo traveller | 30 countries | Next: Japan 🇯🇵", website: "deepatravels.blog", posts: 720, followers: "65K", following: "820", avatar: "https://i.pravatar.cc/150?img=15", images: Array.from({length:9},(_,i)=>`https://picsum.photos/seed/${i+100}/400/400`), verified: false },
-};
+/** Map an API UserSummary to suggestion shape */
+function mapApiSuggestion(u: { id: number; name?: string; avatar?: string }): SuggestionItem {
+  return { id: u.id, name: u.name ?? "user", sub: "Suggested for you", avatar: u.avatar ?? "" };
+}
 
 // ── UTILS ─────────────────────────────────────────────────────────────────────
-function Toggle({ checked, onChange }) {
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <button onClick={() => onChange(!checked)} className={`w-11 h-6 rounded-full transition-all relative shrink-0 ${checked ? "bg-teal-500" : "bg-gray-300"}`}>
       <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${checked ? "translate-x-[22px]" : "translate-x-[2px]"}`} />
@@ -97,7 +84,7 @@ function Toggle({ checked, onChange }) {
 }
 
 // ── STORY VIEWER ──────────────────────────────────────────────────────────────
-function StoryViewer({ story, onClose }) {
+function StoryViewer({ story, onClose }: { story: StoryItem; onClose: () => void }) {
   const [progress, setProgress] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setProgress(p => { if (p >= 100) { onClose(); return 0; } return p + 2; }), 60);
@@ -106,13 +93,17 @@ function StoryViewer({ story, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={onClose}>
       <div className="relative w-full max-w-xs sm:max-w-sm h-[85vh] max-h-[600px] rounded-2xl overflow-hidden bg-gray-900" onClick={e => e.stopPropagation()}>
-        <img src={story.avatar ?? "https://images.unsplash.com/photo-1501854140801-50d01698950b?w=400"} alt={story.label} className="w-full h-full object-cover" />
+        {(story.mediaUrl || story.avatar) ? (
+        <img src={story.mediaUrl || story.avatar || ""} alt={story.label} className="w-full h-full object-cover bg-gray-800" />
+        ) : (
+        <div className="w-full h-full bg-gray-800 flex items-center justify-center text-white text-sm">{story.label}</div>
+        )}
         <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent">
           <div className="h-0.5 bg-white/30 rounded-full mb-3 w-full">
             <div className="h-full bg-white rounded-full transition-all" style={{ width: `${progress}%` }} />
           </div>
           <div className="flex items-center gap-3">
-            <img src={story.avatar ?? "https://i.pravatar.cc/40"} alt="" className="w-9 h-9 rounded-full border-2 border-teal-400 object-cover" />
+            {story.avatar ? <img src={story.avatar} alt="" className="w-9 h-9 rounded-full border-2 border-teal-400 object-cover" /> : <div className="w-9 h-9 rounded-full border-2 border-teal-400 bg-gray-600" />}
             <span className="text-white text-sm font-bold">{story.label}</span>
             <span className="text-white/60 text-xs ml-auto">1h</span>
           </div>
@@ -123,13 +114,15 @@ function StoryViewer({ story, onClose }) {
   );
 }
 
-function StoryCircle({ story, onClick }) {
+function StoryCircle({ story, onClick }: { story: StoryItem; onClick: () => void }) {
   return (
     <div className="flex flex-col items-center gap-1 shrink-0 cursor-pointer" onClick={onClick}>
       <div className={`w-14 h-14 rounded-full flex items-center justify-center border-2 overflow-hidden transition-transform hover:scale-105 ${story.mine ? "border-dashed border-gray-300" : "border-teal-400"}`}>
         {story.mine
           ? <div className="w-full h-full bg-gray-100 flex items-center justify-center"><PlusCircle className="w-5 h-5 text-teal-400" /></div>
-          : <img src={story.avatar} alt={story.label} className="w-full h-full object-cover" />}
+          : story.avatar || story.mediaUrl
+            ? <img src={story.avatar || story.mediaUrl} alt={story.label} className="w-full h-full object-cover" />
+            : <div className="w-full h-full bg-gray-200 flex items-center justify-center text-[9px] text-gray-500 text-center px-1">{story.label}</div>}
       </div>
       <span className="text-[10px] text-gray-500 truncate w-14 text-center">{story.label}</span>
     </div>
@@ -137,12 +130,12 @@ function StoryCircle({ story, onClick }) {
 }
 
 // ── POST CARD ─────────────────────────────────────────────────────────────────
-function PostCard({ post: p, onUserClick }) {
+function PostCard({ post: p, onUserClick }: { post: PostItem; onUserClick: (username: string) => void }) {
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
   const [likes, setLikes] = useState(p.likes);
   const [comment, setComment] = useState("");
-  const [comments, setComments] = useState([]);
+  const [comments, setComments] = useState<string[]>([]);
   const [showComments, setShowComments] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
 
@@ -150,7 +143,11 @@ function PostCard({ post: p, onUserClick }) {
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4">
       <div className="flex items-center gap-3 px-4 py-3">
         <button onClick={() => onUserClick(p.user)} className="relative w-10 h-10 shrink-0">
+          {p.avatarA ? (
           <img src={p.avatarA} alt={p.user} className="w-10 h-10 rounded-full object-cover border-2 border-teal-400 hover:border-teal-600 transition" />
+          ) : (
+          <div className="w-10 h-10 rounded-full border-2 border-teal-400 bg-gray-200 flex items-center justify-center text-[10px] text-gray-500 font-bold">?</div>
+          )}
           {p.avatarB && <img src={p.avatarB} alt="" className="w-7 h-7 rounded-full object-cover border-2 border-white absolute -bottom-1 -right-1" />}
         </button>
         <div className="flex-1 min-w-0">
@@ -174,7 +171,11 @@ function PostCard({ post: p, onUserClick }) {
         </div>
       </div>
       <div className="relative w-full aspect-[4/3] bg-gray-100">
+        {p.image ? (
         <img src={p.image} alt="post" className="w-full h-full object-cover" />
+        ) : (
+        <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">No media</div>
+        )}
       </div>
       <div className="px-4 py-3">
         <div className="flex items-center justify-between mb-2">
@@ -219,12 +220,12 @@ function PostCard({ post: p, onUserClick }) {
 }
 
 // ── CREATE STORY MODAL ────────────────────────────────────────────────────────
-function CreateStoryModal({ onClose }) {
-  const [preview, setPreview] = useState(null);
+function CreateStoryModal({ onClose }: { onClose: () => void }) {
+  const [preview, setPreview] = useState<string | null>(null);
   const [filter, setFilter] = useState("Normal");
   const [caption, setCaption] = useState("");
-  const fileRef = useRef(null);
-  const handleFile = (e) => {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (f) setPreview(URL.createObjectURL(f));
   };
@@ -280,17 +281,34 @@ function CreateStoryModal({ onClose }) {
 }
 
 // ── USER PROFILE PAGE ─────────────────────────────────────────────────────────
-function UserProfilePage({ username, onBack }) {
-  const profile = USER_PROFILES[username];
+function UserProfilePage({ username, onBack }: { username: string; onBack: () => void }) {
+  const [profile, setProfile] = useState<UserProfileData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [following, setFollowing] = useState(false);
-  const [selectedImg, setSelectedImg] = useState(null);
+  const [selectedImg, setSelectedImg] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("Posts");
+
+  useEffect(() => {
+    // No dedicated API for fetching a user profile by username yet;
+    // show a placeholder state.
+    setLoading(false);
+    setProfile(null);
+  }, [username]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full py-20 px-4">
+        <Loader2 className="w-8 h-8 text-teal-500 animate-spin mb-4" />
+        <p className="text-gray-400 text-sm">Loading profile...</p>
+      </div>
+    );
+  }
 
   if (!profile) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-20 px-4">
         <User className="w-16 h-16 text-gray-300 mb-4" />
-        <p className="text-gray-500 text-sm">User not found</p>
+        <p className="text-gray-500 text-sm">User @{username} not found</p>
         <button onClick={onBack} className="mt-4 text-teal-500 text-sm font-semibold">← Go back</button>
       </div>
     );
@@ -366,17 +384,6 @@ function UserProfilePage({ username, onBack }) {
           </button>
         </div>
 
-        {/* Story highlights */}
-        <div className="flex gap-4 overflow-x-auto pb-2 mb-2" style={{ scrollbarWidth: "none" }}>
-          {["Travel","Food","Life","Work","Friends"].map((label, i) => (
-            <div key={i} className="flex flex-col items-center gap-1 shrink-0 cursor-pointer">
-              <div className="w-14 h-14 rounded-full border-2 border-teal-300 overflow-hidden hover:border-teal-500 transition">
-                <img src={`https://i.pravatar.cc/56?img=${40+i}`} alt={label} className="w-full h-full object-cover" />
-              </div>
-              <span className="text-[10px] text-gray-500">{label}</span>
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* Tabs */}
@@ -408,12 +415,42 @@ function UserProfilePage({ username, onBack }) {
 }
 
 // ── HOME SECTION ──────────────────────────────────────────────────────────────
-function HomeSection({ onUserClick }) {
-  const [searches, setSearches] = useState(RECENT_SEARCHES);
+function HomeSection({ onUserClick }: { onUserClick: (username: string) => void }) {
+  const [stories, setStories] = useState<StoryItem[]>([{ id: "my", mine: true, label: "Your Story", avatar: null }]);
+  const [posts, setPosts] = useState<PostItem[]>([]);
+  const [searches, setSearches] = useState<SearchItem[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
+  const [loadingFeed, setLoadingFeed] = useState(true);
   const [q, setQ] = useState("");
-  const [storyView, setStoryView] = useState({ open: false, story: null });
+  const [storyView, setStoryView] = useState<{ open: boolean; story: StoryItem | null }>({ open: false, story: null });
   const [showCreateStory, setShowCreateStory] = useState(false);
   const filtered = q ? searches.filter(s => s.name.toLowerCase().includes(q.toLowerCase())) : searches;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [feedRes, storyRes, suggestionsRes] = await Promise.allSettled([
+          socialApi.getPublicFeed({ limit: 20 }),
+          socialApi.getStoryFeed(),
+          socialApi.getSuggestions(),
+        ]);
+        if (cancelled) return;
+        if (feedRes.status === "fulfilled") {
+          setPosts(feedRes.value.data.map(mapApiPostToPostItem));
+        }
+        if (storyRes.status === "fulfilled" && storyRes.value.length > 0) {
+          setStories(prev => [prev[0], ...storyRes.value.map(mapApiStoryToStoryItem)]);
+        }
+        if (suggestionsRes.status === "fulfilled" && Array.isArray(suggestionsRes.value)) {
+          setSuggestions(suggestionsRes.value.map(mapApiSuggestion));
+        }
+      } catch { /* API may be unreachable */ }
+      if (!cancelled) setLoadingFeed(false);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="w-full px-3 sm:px-4 py-4 flex gap-6 items-start bg-gray-50 min-h-screen">
@@ -425,13 +462,21 @@ function HomeSection({ onUserClick }) {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-4 mb-5">
           <p className="text-xs font-semibold tracking-widest uppercase text-gray-400 mb-3">Stories</p>
           <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
-            {STORIES.map(s => (
+            {stories.map(s => (
               <StoryCircle key={s.id} story={s}
                 onClick={() => s.mine ? setShowCreateStory(true) : setStoryView({ open: true, story: s })} />
             ))}
           </div>
         </div>
-        {POSTS.map(post => <PostCard key={post.id} post={post} onUserClick={onUserClick} />)}
+        {loadingFeed && posts.length === 0 && (
+          <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-teal-500 animate-spin" /></div>
+        )}
+        {!loadingFeed && posts.length === 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center mb-4">
+            <p className="text-sm text-gray-400">No posts yet. Follow people to see their posts here.</p>
+          </div>
+        )}
+        {posts.map(post => <PostCard key={post.id} post={post} onUserClick={onUserClick} />)}
       </div>
 
       {/* Sidebar */}
@@ -470,10 +515,14 @@ function HomeSection({ onUserClick }) {
             <button className="text-[11px] text-teal-500 hover:underline">See All</button>
           </div>
           <div className="space-y-3">
-            {SUGGESTIONS.map(s => (
+            {suggestions.map(s => (
               <div key={s.id} className="flex items-center gap-2.5">
                 <button onClick={() => onUserClick(s.name)}>
+                  {s.avatar ? (
                   <img src={s.avatar} alt={s.name} className="w-9 h-9 rounded-full object-cover shrink-0 hover:ring-2 ring-teal-400 transition" />
+                  ) : (
+                  <div className="w-9 h-9 rounded-full bg-gray-200 shrink-0 hover:ring-2 ring-teal-400 flex items-center justify-center text-[10px] text-gray-500 font-bold">?</div>
+                  )}
                 </button>
                 <div className="flex-1 min-w-0">
                   <button onClick={() => onUserClick(s.name)} className="text-xs font-semibold text-gray-800 truncate hover:text-teal-600 transition block">{s.name}</button>
@@ -490,16 +539,48 @@ function HomeSection({ onUserClick }) {
 }
 
 // ── EXPLORE SECTION ───────────────────────────────────────────────────────────
-const EXPLORE_POSTS = Array.from({ length: 18 }, (_, i) => ({
-  id: i + 1, image: `https://picsum.photos/seed/${i + 10}/400/400`,
-  likes: Math.floor(Math.random() * 5000) + 200, comments: Math.floor(Math.random() * 500) + 20,
-}));
-const PEOPLE = Object.values(USER_PROFILES).slice(0, 6);
 
-function ExploreSection({ onUserClick }) {
+function ExploreSection({ onUserClick }: { onUserClick: (username: string) => void }) {
   const [tab, setTab] = useState("Top");
-  const [hover, setHover] = useState(null);
+  const [hover, setHover] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [explorePosts, setExplorePosts] = useState<ExplorePostItem[]>([]);
+  const [people, setPeople] = useState<{ username: string; name: string; avatar: string; posts: number }[]>([]);
+  const [loadingExplore, setLoadingExplore] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [feedRes, sugRes] = await Promise.allSettled([
+          socialApi.getPublicFeed({ limit: 18 }),
+          socialApi.getSuggestions(),
+        ]);
+        if (cancelled) return;
+        if (feedRes.status === "fulfilled") {
+          setExplorePosts(feedRes.value.data.map((p, i) => ({
+            id: Number(p.id) || i + 1,
+            image: p.imageUrl ?? "",
+            likes: p.likeCount,
+            comments: p.commentCount,
+          })));
+        }
+        if (sugRes.status === "fulfilled" && Array.isArray(sugRes.value)) {
+          setPeople(
+            sugRes.value.map((u) => ({
+              username: (u.name ?? "user").toLowerCase().replace(/\s+/g, "_"),
+              name: u.name ?? "user",
+              avatar: u.avatar ?? "",
+              posts: 0,
+            })),
+          );
+        }
+      } catch { /* API may be unreachable */ }
+      if (!cancelled) setLoadingExplore(false);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="max-w-3xl mx-auto px-3 sm:px-4 py-6">
@@ -514,10 +595,15 @@ function ExploreSection({ onUserClick }) {
         ))}
       </div>
       {tab === "People" ? (
+        people.length === 0 ? <div className="text-center py-12 text-gray-400 text-sm">No suggestions available.</div> :
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-          {PEOPLE.map((p, i) => (
+          {        people.map((p, i) => (
             <div key={i} className="bg-white rounded-2xl p-4 flex flex-col items-center gap-2 border border-gray-100 shadow-sm hover:shadow-md transition cursor-pointer" onClick={() => onUserClick(p.username)}>
+              {p.avatar ? (
               <img src={p.avatar} alt={p.name} className="w-16 h-16 rounded-full object-cover border-2 border-teal-300" />
+              ) : (
+              <div className="w-16 h-16 rounded-full border-2 border-teal-300 bg-gray-200 flex items-center justify-center text-xs text-gray-500 font-bold">?</div>
+              )}
               <p className="text-sm font-bold text-gray-900 text-center truncate w-full">{p.username}</p>
               <p className="text-xs text-gray-400">{p.posts} posts</p>
               <button className="text-xs font-bold text-white px-4 py-1.5 rounded-full shadow" style={{ background: TEAL }}>Follow</button>
@@ -525,26 +611,22 @@ function ExploreSection({ onUserClick }) {
           ))}
         </div>
       ) : tab === "Tags" ? (
-        <div className="flex flex-wrap gap-2">
-          {["#photography","#travel","#food","#nature","#art","#fitness","#music","#fashion","#tech","#cars","#coffee","#sunset"].map(tag => (
-            <span key={tag} className="px-4 py-2 bg-teal-50 text-teal-700 rounded-full text-sm font-semibold border border-teal-200 cursor-pointer hover:bg-teal-100 transition">{tag}</span>
-          ))}
-        </div>
+        <div className="text-center py-12 text-gray-400 text-sm">No trending tags from the API yet.</div>
       ) : tab === "Places" ? (
-        <div className="grid grid-cols-2 gap-3">
-          {["Pondicherry","Chennai","Mumbai","Delhi","Bangalore","Goa"].map(place => (
-            <div key={place} className="bg-white rounded-2xl p-4 flex items-center gap-3 border border-gray-100 shadow-sm cursor-pointer hover:bg-gray-50 transition">
-              <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center shrink-0"><Globe className="w-5 h-5 text-teal-600" /></div>
-              <div><p className="text-sm font-bold text-gray-900">{place}</p><p className="text-xs text-gray-400">View posts</p></div>
-            </div>
-          ))}
-        </div>
+        <div className="text-center py-12 text-gray-400 text-sm">No places from the API yet.</div>
       ) : (
+        <>
+        {loadingExplore && explorePosts.length === 0 && <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 text-teal-500 animate-spin" /></div>}
+        {!loadingExplore && explorePosts.length === 0 && <div className="text-center py-12 text-gray-400 text-sm">No posts to explore yet.</div>}
         <div className="columns-2 sm:columns-3 gap-2 space-y-2">
-          {EXPLORE_POSTS.map(post => (
+          {explorePosts.map(post => (
             <div key={post.id} className="relative overflow-hidden rounded-xl cursor-pointer group break-inside-avoid"
               onMouseEnter={() => setHover(post.id)} onMouseLeave={() => setHover(null)}>
+              {post.image ? (
               <img src={post.image} alt="" className="w-full aspect-square object-cover transition-transform duration-300 group-hover:scale-105" />
+              ) : (
+              <div className="w-full aspect-square bg-gray-200 flex items-center justify-center text-[10px] text-gray-500">No image</div>
+              )}
               {hover === post.id && (
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-4">
                   <div className="flex items-center gap-1 text-white"><Heart className="w-5 h-5 fill-white" /><span className="text-sm font-bold">{post.likes.toLocaleString()}</span></div>
@@ -554,27 +636,18 @@ function ExploreSection({ onUserClick }) {
             </div>
           ))}
         </div>
+        </>
       )}
     </div>
   );
 }
 
 // ── REELS SECTION ─────────────────────────────────────────────────────────────
-const REELS_DATA = [
-  { id: 1, username: "@style_icon",  caption: "Summer vibes ✨",          video: "/video/vid1.mp4", likes: 42100, comments: 831,  shares: 214, avatar: "https://i.pravatar.cc/40?img=7",  user: "style_icon"  },
-  { id: 2, username: "@tech_guru",   caption: "Unboxing the latest... 📦", video: "/video/vid2.mp4", likes: 18300, comments: 413,  shares: 98,  avatar: "https://i.pravatar.cc/40?img=9",  user: "tech_guru"   },
-  { id: 3, username: "@foodie_life", caption: "Delicious! 🍕",             video: "/video/vid3.mp4", likes: 65000, comments: 1200, shares: 540, avatar: "https://i.pravatar.cc/40?img=10", user: "foodie_life" },
-  { id: 4, username: "@wanderlust",  caption: "Mountain view 🏔",          video: "/video/vid4.mp4", likes: 31200, comments: 720,  shares: 305, avatar: "https://i.pravatar.cc/40?img=11", user: "wanderlust"  },
-  { id: 5, username: "@fit_fam",     caption: "Morning routine 💪",        video: "/video/vid5.mp4", likes: 27800, comments: 564,  shares: 189, avatar: "https://i.pravatar.cc/40?img=12", user: "fit_fam"     },
-  { id: 6, username: "@creator_hub", caption: "New drop 🔥",               video: "/video/vid6.mp4", likes: 89400, comments: 2100, shares: 870, avatar: "https://i.pravatar.cc/40?img=13", user: "creator_hub" },
-  { id: 7, username: "@style_icon",  caption: "Summer vibes ✨",          video: "/video/vid1.mp4", likes: 42100, comments: 831,  shares: 214, avatar: "https://i.pravatar.cc/40?img=7",  user: "style_icon"  },
-  { id: 8, username: "@tech_guru",   caption: "Unboxing the latest... 📦", video: "/video/vid2.mp4", likes: 18300, comments: 413,  shares: 98,  avatar: "https://i.pravatar.cc/40?img=9",  user: "tech_guru"   },
-];
 
 // Single reel card with its own video ref + intersection observer
-function ReelCard({ reel, globalMuted, onMuteToggle, onUserClick }) {
-  const videoRef = useRef(null);
-  const containerRef = useRef(null);
+function ReelCard({ reel, globalMuted, onMuteToggle, onUserClick }: { reel: ReelItem; globalMuted: boolean; onMuteToggle: () => void; onUserClick: (username: string) => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying]   = useState(false);
   const [liked, setLiked]       = useState(false);
   const [saved, setSaved]       = useState(false);
@@ -583,7 +656,7 @@ function ReelCard({ reel, globalMuted, onMuteToggle, onUserClick }) {
   const [duration, setDuration] = useState(0);
   const [showComment, setShowComment] = useState(false);
   const [commentText, setCommentText] = useState("");
-  const [comments, setComments] = useState([]);
+  const [comments, setComments] = useState<string[]>([]);
   const [doubleTapHeart, setDoubleTapHeart] = useState(false);
   const lastTap = useRef(0);
 
@@ -641,7 +714,7 @@ function ReelCard({ reel, globalMuted, onMuteToggle, onUserClick }) {
     }
   };
 
-  const handleSeek = (e) => {
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     const vid = videoRef.current;
     if (!vid || !vid.duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -649,7 +722,7 @@ function ReelCard({ reel, globalMuted, onMuteToggle, onUserClick }) {
     vid.currentTime = pct * vid.duration;
   };
 
-  const fmt = (s) => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
+  const fmt = (s: number) => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
 
   return (
     <div
@@ -854,8 +927,9 @@ function ReelCard({ reel, globalMuted, onMuteToggle, onUserClick }) {
   );
 }
 
-function ReelsSection({ onUserClick }) {
+function ReelsSection({ onUserClick }: { onUserClick: (username: string) => void }) {
   const [globalMuted, setGlobalMuted] = useState(true);
+  const [reels] = useState<ReelItem[]>([]);
 
   return (
     <div className="bg-black min-h-screen">
@@ -865,6 +939,13 @@ function ReelsSection({ onUserClick }) {
           100% { transform: translateX(-100%); }
         }
       `}</style>
+
+      {reels.length === 0 && (
+        <div className="flex flex-col items-center justify-center h-[60vh] text-white/50">
+          <Film className="w-12 h-12 mb-3" />
+          <p className="text-sm">No reels available yet.</p>
+        </div>
+      )}
 
       {/* Header */}
       <div className="sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
@@ -886,7 +967,7 @@ function ReelsSection({ onUserClick }) {
           marginTop: "-52px",   /* pull up under header */
         }}
       >
-        {REELS_DATA.map((reel) => (
+        {reels.map((reel) => (
           <div
             key={reel.id}
             style={{ scrollSnapAlign: "start", height: "100dvh" }}
@@ -908,19 +989,15 @@ function ReelsSection({ onUserClick }) {
 }
 
 // ── MESSAGES SECTION ──────────────────────────────────────────────────────────
-const INIT_MSGS = [
-  { id: 1, sender: "them", image: "https://images.unsplash.com/photo-1568702846914-96b305d2aaeb?w=400&q=80" },
-  { id: 2, sender: "them", text: "These 5 useful websites are so amazing! 🙌🏼" },
-];
-
-function MessagesSection({ onUserClick }) {
-  const [active, setActive] = useState(1);
+function MessagesSection({ onUserClick }: { onUserClick: (username: string) => void }) {
+  const [contacts] = useState<ContactItem[]>([]);
+  const [active, setActive] = useState<number | null>(null);
   const [tab, setTab] = useState("PRIMARY");
   const [msgText, setMsgText] = useState("");
   const [showChat, setShowChat] = useState(false);
-  const [messages, setMessages] = useState(INIT_MSGS);
-  const contact = CONTACTS.find(c => c.id === active);
-  const messagesEndRef = useRef(null);
+  const [messages, setMessages] = useState<{ id: number; sender: string; text?: string; image?: string }[]>([]);
+  const contact = contacts.find(c => c.id === active);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -928,9 +1005,6 @@ function MessagesSection({ onUserClick }) {
     if (!msgText.trim()) return;
     setMessages(p => [...p, { id: Date.now(), sender: "me", text: msgText.trim() }]);
     setMsgText("");
-    setTimeout(() => {
-      setMessages(p => [...p, { id: Date.now() + 1, sender: "them", text: "Got it! 👍" }]);
-    }, 1000);
   };
 
   return (
@@ -949,7 +1023,7 @@ function MessagesSection({ onUserClick }) {
           ))}
         </div>
         <div className="flex-1 overflow-y-auto">
-          {CONTACTS.map(c => (
+          {contacts.map(c => (
             <button key={c.id} onClick={() => { setActive(c.id); setShowChat(true); }}
               className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left ${active === c.id ? "bg-teal-50" : ""}`}>
               <div className="relative shrink-0">
@@ -1018,10 +1092,10 @@ function MessagesSection({ onUserClick }) {
 }
 
 // ── NOTIFICATIONS SECTION ─────────────────────────────────────────────────────
-function NotificationsSection({ onUserClick }) {
-  const [notifs, setNotifs] = useState(NOTIFICATIONS);
-  const [followed, setFollowed] = useState({});
-  const dismiss = (id) => setNotifs(p => p.filter(n => n.id !== id));
+function NotificationsSection({ onUserClick }: { onUserClick: (username: string) => void }) {
+  const [notifs, setNotifs] = useState<NotificationItem[]>([]);
+  const [followed, setFollowed] = useState<Record<number, boolean>>({});
+  const dismiss = (id: number) => setNotifs(p => p.filter(n => n.id !== id));
 
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6">
@@ -1077,15 +1151,15 @@ function NotificationsSection({ onUserClick }) {
 // ── CREATE SECTION ────────────────────────────────────────────────────────────
 function CreateSection() {
   const [step, setStep] = useState("upload");
-  const [preview, setPreview] = useState(null);
+  const [preview, setPreview] = useState<string | null>(null);
   const [filter, setFilter] = useState("Normal");
   const [caption, setCaption] = useState("");
   const [location, setLocation] = useState("");
   const [tags, setTags] = useState("");
   const [shared, setShared] = useState(false);
-  const fileRef = useRef(null);
-  const handleFile = (e) => { const f = e.target.files?.[0]; if (f) { setPreview(URL.createObjectURL(f)); setStep("edit"); } };
-  const handleDrop = (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) { setPreview(URL.createObjectURL(f)); setStep("edit"); } };
+  const fileRef = useRef<HTMLInputElement>(null);
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) { setPreview(URL.createObjectURL(f)); setStep("edit"); } };
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) { setPreview(URL.createObjectURL(f)); setStep("edit"); } };
   const reset = () => { setStep("upload"); setPreview(null); setFilter("Normal"); setCaption(""); setLocation(""); setTags(""); setShared(false); };
 
   if (shared) return (
@@ -1152,8 +1226,8 @@ function CreateSection() {
             </div>
             <div className="flex-1 p-5 space-y-4">
               <div className="flex items-center gap-3">
-                <img src="https://i.pravatar.cc/36?img=7" alt="me" className="w-9 h-9 rounded-full" />
-                <span className="text-sm font-bold text-gray-800">planext4u</span>
+                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center shrink-0"><User className="w-4 h-4 text-gray-500" /></div>
+                <span className="text-sm font-bold text-gray-800">You</span>
               </div>
               <textarea value={caption} onChange={e => setCaption(e.target.value)} placeholder="Write a caption…" rows={4}
                 className="w-full text-sm text-gray-700 bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-200 outline-none focus:border-teal-400 resize-none" />
@@ -1176,14 +1250,24 @@ function CreateSection() {
 }
 
 // ── MY PROFILE SECTION ────────────────────────────────────────────────────────
-const PROFILE_IMAGES = Array.from({ length: 9 }, (_, i) => `https://picsum.photos/seed/${i + 50}/400/400`);
-const HIGHLIGHT_LABELS = ["Travel","Food","Life","Work","Friends","Events","Reels"];
 const PROFILE_TABS_LIST = ["Posts","Reels","Tagged","Saved"];
 
 function MyProfileSection() {
   const [activeTab, setActiveTab] = useState("Posts");
   const [following, setFollowing] = useState(false);
-  const [selectedImg, setSelectedImg] = useState(null);
+  const [selectedImg, setSelectedImg] = useState<string | null>(null);
+  const [gridImages, setGridImages] = useState<string[]>([]);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    socialApi.getPublicFeed({ limit: 12 }).then((res) => {
+      if (cancelled) return;
+      const urls = res.data.map((p) => p.imageUrl).filter((u): u is string => Boolean(u?.trim()));
+      setGridImages(urls);
+    }).catch(() => {}).finally(() => { if (!cancelled) setLoadingProfile(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="max-w-3xl mx-auto px-3 sm:px-4 py-6">
@@ -1194,17 +1278,17 @@ function MyProfileSection() {
         </div>
       )}
       <div className="flex flex-col sm:flex-row sm:items-start gap-5 mb-6">
-        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-2 border-teal-400 shrink-0">
-          <img src="https://i.pravatar.cc/96?img=7" alt="profile" className="w-full h-full object-cover" />
+        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-2 border-teal-400 shrink-0 bg-gray-100 flex items-center justify-center">
+          <User className="w-10 h-10 text-gray-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <h1 className="text-base font-semibold text-gray-900 mb-2">Planext4U Private Limited ®</h1>
+          <h1 className="text-base font-semibold text-gray-900 mb-2">Your profile</h1>
           <div className="flex gap-5 mb-3">
-            {[["1,048","Posts"],["4M","Followers"],["P24","Following"]].map(([v,l]) => (
+            {[["—","Posts"],["—","Followers"],["—","Following"]].map(([v,l]) => (
               <div key={l}><p className="text-sm font-semibold text-gray-900">{v}</p><p className="text-[11px] text-gray-500">{l}</p></div>
             ))}
           </div>
-          <p className="text-xs text-gray-500 mb-3 leading-relaxed">Marquess Brownlee · Following<br />Software Developer<br />Planext4U</p>
+          <p className="text-xs text-gray-500 mb-3 leading-relaxed">Connect your account to sync name, bio, and stats from the API.</p>
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setFollowing(v => !v)} className={`px-4 py-2 rounded-xl text-sm font-bold transition ${following ? "bg-gray-100 text-gray-700 hover:bg-gray-200" : "text-white shadow hover:opacity-90"}`} style={following ? {} : { background: TEAL }}>
               {following ? "Following" : "Follow"}
@@ -1215,17 +1299,7 @@ function MyProfileSection() {
         </div>
       </div>
 
-      {/* Highlights */}
-      <div className="flex gap-4 overflow-x-auto pb-2 mb-5" style={{ scrollbarWidth: "none" }}>
-        {HIGHLIGHT_LABELS.map((label, i) => (
-          <div key={i} className="flex flex-col items-center gap-1 shrink-0 cursor-pointer">
-            <div className="w-14 h-14 rounded-full border-2 border-teal-300 overflow-hidden hover:border-teal-500 transition">
-              <img src={`https://i.pravatar.cc/56?img=${40 + i}`} alt={label} className="w-full h-full object-cover" />
-            </div>
-            <span className="text-[10px] text-gray-500 truncate w-14 text-center">{label}</span>
-          </div>
-        ))}
-      </div>
+      <p className="text-[11px] text-gray-400 mb-3">Story highlights will appear here when available from the API.</p>
 
       {/* Tabs */}
       <div className="flex border-b border-gray-100 mb-1">
@@ -1241,14 +1315,20 @@ function MyProfileSection() {
         ))}
       </div>
 
+      {loadingProfile ? (
+        <div className="flex justify-center py-16"><Loader2 className="w-7 h-7 text-teal-500 animate-spin" /></div>
+      ) : gridImages.length === 0 ? (
+        <div className="text-center py-16 text-gray-400 text-sm">No public posts to show yet.</div>
+      ) : (
       <div className="grid grid-cols-3 gap-0.5 sm:gap-1">
-        {PROFILE_IMAGES.map((img, i) => (
+        {gridImages.map((img, i) => (
           <div key={i} className="relative aspect-square overflow-hidden rounded-sm cursor-pointer group" onClick={() => setSelectedImg(img)}>
             <img src={img} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }
@@ -1286,10 +1366,10 @@ const SETTINGS_NAV = [
 ];
 
 function EditProfilePanel() {
-  const fileRef = useRef(null);
-  const [avatar, setAvatar] = useState("https://i.pravatar.cc/64?img=7");
-  const [form, setForm] = useState({ name:"", username:"", website:"", bio:"", email:"", phone:"", gender:"", showSuggestions: true });
-  const upd = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [avatar, setAvatar] = useState<string | null>(null);
+  const [form, setForm] = useState<Record<string, string | boolean>>({ name:"", username:"", website:"", bio:"", email:"", phone:"", gender:"", showSuggestions: true });
+  const upd = (k: string, v: string | boolean) => setForm(p => ({ ...p, [k]: v }));
   const [saved, setSaved] = useState(false);
 
   return (
@@ -1298,7 +1378,11 @@ function EditProfilePanel() {
         {saved && <div className="mb-4 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 text-sm text-teal-700 font-medium flex items-center gap-2"><Check className="w-4 h-4" />Profile updated!</div>}
         <div className="flex items-center gap-4 mb-6 sm:mb-8">
           <div className="relative cursor-pointer" onClick={() => fileRef.current?.click()}>
+            {avatar ? (
             <img src={avatar} alt="avatar" className="w-16 h-16 rounded-2xl object-cover" />
+            ) : (
+            <div className="w-16 h-16 rounded-2xl bg-gray-200 flex items-center justify-center"><User className="w-7 h-7 text-gray-500" /></div>
+            )}
             <div className="absolute inset-0 rounded-2xl bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition">
               <Camera className="w-5 h-5 text-white" />
             </div>
@@ -1313,7 +1397,7 @@ function EditProfilePanel() {
           { label:"Name", key:"name", placeholder:"Planext4U", hint:"Help people discover your account." },
           { label:"Username", key:"username", placeholder:"Planext4U", hint:"You can change username back within 14 days." },
           { label:"Website", key:"website", placeholder:"https://", hint:"Editing links is available on mobile." },
-          { label:"Bio", key:"bio", placeholder:"Tell your story…", hint:`${form.bio.length}/150`, multi: true },
+          { label:"Bio", key:"bio", placeholder:"Tell your story…", hint:`${String(form.bio).length}/150`, multi: true },
           { label:"Email", key:"email", placeholder:"email@example.com" },
           { label:"Phone", key:"phone", placeholder:"+91 97100 00000" },
           { label:"Gender", key:"gender", placeholder:"Prefer not to say" },
@@ -1322,8 +1406,8 @@ function EditProfilePanel() {
             <label className="text-sm font-semibold text-gray-700 sm:pt-2 sm:text-right sm:pr-2 col-span-1">{label}</label>
             <div className="col-span-2">
               {multi
-                ? <textarea value={form[key]} onChange={e => upd(key, e.target.value)} placeholder={placeholder} rows={3} maxLength={150} className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-teal-400 resize-none transition" />
-                : <input type="text" value={form[key]} onChange={e => upd(key, e.target.value)} placeholder={placeholder} className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-teal-400 transition" />}
+                ? <textarea value={String(form[key] ?? "")} onChange={e => upd(key, e.target.value)} placeholder={placeholder} rows={3} maxLength={150} className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-teal-400 resize-none transition" />
+                : <input type="text" value={String(form[key] ?? "")} onChange={e => upd(key, e.target.value)} placeholder={placeholder} className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-teal-400 transition" />}
               {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
             </div>
           </div>
@@ -1372,8 +1456,8 @@ function PrivacyPanel() {
 }
 
 function NotificationSettingsPanel() {
-  const [settings, setSettings] = useState({ likes: true, comments: true, follows: true, messages: false, reposts: true, mentions: true, liveVideos: false, emailNotifs: false });
-  const toggle = (k) => setSettings(p => ({ ...p, [k]: !p[k] }));
+  const [settings, setSettings] = useState<Record<string, boolean>>({ likes: true, comments: true, follows: true, messages: false, reposts: true, mentions: true, liveVideos: false, emailNotifs: false });
+  const toggle = (k: string) => setSettings(p => ({ ...p, [k]: !p[k] }));
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-xl">
       <h2 className="text-base font-semibold text-gray-900 mb-6">Notification Settings</h2>
@@ -1440,22 +1524,15 @@ function TimeManagementPanel() {
 }
 
 function RewardsPanel() {
-  const pts = 1250;
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-xl">
       <h2 className="text-base font-semibold text-gray-900 mb-6">Reward Points</h2>
       <div className="rounded-2xl text-white p-6 mb-5 text-center" style={{ background: TEAL }}>
         <Star className="w-8 h-8 mx-auto mb-2 fill-white" />
-        <p className="text-3xl font-semibold">{pts.toLocaleString()}</p>
-        <p className="text-sm text-white/80 mt-1">Total Points</p>
+        <p className="text-3xl font-semibold">—</p>
+        <p className="text-sm text-white/80 mt-1">Total points when rewards API is connected</p>
       </div>
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-        {[["Daily login","+ 10 pts"],["Post a photo","+ 25 pts"],["Get 100 likes","+ 50 pts"],["Invite a friend","+ 100 pts"]].map(([act, p], i, arr) => (
-          <div key={act} className={`flex items-center justify-between px-4 py-3.5 ${i < arr.length-1 ? "border-b border-gray-50" : ""}`}>
-            <span className="text-sm text-gray-700">{act}</span><span className="text-xs font-bold text-teal-600">{p}</span>
-          </div>
-        ))}
-      </div>
+      <p className="text-sm text-gray-500 text-center">No reward activity loaded yet.</p>
     </div>
   );
 }
@@ -1464,27 +1541,26 @@ function SavedPanel() {
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-xl">
       <h2 className="text-base font-semibold text-gray-900 mb-6">Saved</h2>
-      <div className="grid grid-cols-3 gap-2">
-        {Array.from({length:6},(_,i)=>`https://picsum.photos/seed/${i+80}/300/300`).map((img,i)=>(
-          <div key={i} className="aspect-square rounded-xl overflow-hidden cursor-pointer group relative">
-            <img src={img} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-          </div>
-        ))}
-      </div>
+      <p className="text-sm text-gray-500 text-center py-12">No saved posts yet.</p>
     </div>
   );
 }
 
 function CloseFriendsPanel() {
-  const [friends, setFriends] = useState([1,3]);
+  const [cfSuggestions] = useState<SuggestionItem[]>([]);
+  const [friends, setFriends] = useState<number[]>([]);
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-xl">
       <h2 className="text-base font-semibold text-gray-900 mb-2">Close Friends</h2>
       <p className="text-xs text-gray-400 mb-5">People on your close friends list can see your close friends stories.</p>
       <div className="space-y-2">
-        {SUGGESTIONS.map(s => (
+        {cfSuggestions.map(s => (
           <div key={s.id} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-gray-100">
+            {s.avatar ? (
             <img src={s.avatar} alt={s.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
+            ) : (
+            <div className="w-10 h-10 rounded-full bg-gray-200 shrink-0 flex items-center justify-center text-xs text-gray-500 font-bold">?</div>
+            )}
             <div className="flex-1"><p className="text-sm font-semibold text-gray-900">{s.name}</p><p className="text-xs text-gray-400">{s.sub}</p></div>
             <button onClick={() => setFriends(p => p.includes(s.id) ? p.filter(x=>x!==s.id) : [...p,s.id])}
               className={`text-xs font-bold px-3 py-1.5 rounded-xl transition ${friends.includes(s.id) ? "bg-teal-500 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
@@ -1498,7 +1574,7 @@ function CloseFriendsPanel() {
 }
 
 function BlockedPanel() {
-  const [blocked, setBlocked] = useState([{ id:1, name:"spam_account_01", avatar:"https://i.pravatar.cc/40?img=31" }]);
+  const [blocked, setBlocked] = useState<{ id: number; name: string; avatar: string }[]>([]);
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-xl">
       <h2 className="text-base font-semibold text-gray-900 mb-2">Blocked</h2>
@@ -1545,7 +1621,7 @@ function CommentsPanel() {
   );
 }
 
-function GenericPanel({ title, desc }) {
+function GenericPanel({ title, desc }: { title: string; desc: string }) {
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 max-w-xl">
       <h2 className="text-base font-semibold text-gray-900 mb-2">{title}</h2>
@@ -1558,7 +1634,7 @@ function SettingsSection() {
   const [activeMenu, setActiveMenu] = useState("edit_profile");
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
 
-  const handleMenu = (key) => { setActiveMenu(key); setMobilePanelOpen(true); };
+  const handleMenu = (key: string) => { setActiveMenu(key); setMobilePanelOpen(true); };
 
   const renderPanel = () => {
     switch (activeMenu) {
@@ -1634,10 +1710,10 @@ const NAV_ITEMS = [
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function SocialApp() {
   const [section, setSection] = useState("home");
-  const [userProfile, setUserProfile] = useState(null); // { username }
+  const [userProfile, setUserProfile] = useState<{ username: string } | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  const handleUserClick = (username) => {
+  const handleUserClick = (username: string) => {
     setUserProfile({ username });
   };
 
@@ -1645,7 +1721,7 @@ export default function SocialApp() {
     setUserProfile(null);
   };
 
-  const handleNavClick = (key) => {
+  const handleNavClick = (key: string) => {
     setSection(key);
     setUserProfile(null);
     setMobileNavOpen(false);
@@ -1689,9 +1765,9 @@ export default function SocialApp() {
         ))}
         <div className="mt-auto pt-4 border-t border-gray-100">
           <div className="flex items-center gap-3 px-2 py-2">
-            <img src="https://i.pravatar.cc/32?img=7" alt="me" className="w-8 h-8 rounded-full object-cover shrink-0" />
+            <div className="w-8 h-8 rounded-full bg-gray-200 shrink-0 flex items-center justify-center"><User className="w-4 h-4 text-gray-500" /></div>
             <div className="hidden lg:block min-w-0">
-              <p className="text-xs font-bold text-gray-900 truncate">planext4u</p>
+              <p className="text-xs font-bold text-gray-900 truncate">Account</p>
               <p className="text-[10px] text-gray-400">View profile</p>
             </div>
           </div>

@@ -1,30 +1,25 @@
 "use client";
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { ChevronLeft, ChevronRight } from "lucide-react"; 
-import banner1 from "../images/home-banner/banner1.png";
-import banner2 from "../images/home-banner/banner2.jpg";
-import banner3 from "../images/home-banner/banner3.png";
-
-const slides = [
-  {
-    image: banner1,
-    alt: "Products Electronics - 50% discount",
-  },
-  {
-    image: banner2,
-    alt: "Smart Gadgets - 40% discount",
-  },
-  {
-    image: banner3,
-    alt: "Home Appliances - 60% discount",
-  },
-];
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import banner1 from "../../images/home-banner/banner1.png";
+import banner2 from "../../images/home-banner/banner2.jpg";
+import banner3 from "../../images/home-banner/banner3.png";
+import { contentApi } from "@/lib/api/content";
 
 export default function HeroSlider() {
+  const [slides, setSlides] = useState<{ image: any; alt: string }[]>([]);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(true);
   const [slidePosition, setSlidePosition] = useState(0);
+
+  useEffect(() => {
+    contentApi.getBanners().then((banners) => {
+      if (banners.length) {
+        setSlides(banners.map((b) => ({ image: (b.imageUrl || b.image) as any, alt: b.title ?? "Banner" })));
+      }
+    }).catch(() => {});
+  }, []);
  
   useEffect(() => {
     const timer = setInterval(() => {
@@ -61,6 +56,14 @@ export default function HeroSlider() {
       return () => clearTimeout(timer);
     }
   }, [currentSlide, slidePosition]);
+
+  if (slides.length === 0) {
+    return (
+      <div className="mx-auto max-w-[1400px] px-3 sm:px-4 md:px-6 mt-2 sm:mt-3 md:mt-4">
+        <div className="h-[180px] xs:h-[200px] sm:h-[250px] md:h-[320px] lg:h-[400px] xl:h-[450px] bg-gray-100 rounded-lg sm:rounded-xl md:rounded-2xl animate-pulse" />
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full overflow-hidden mx-auto max-w-[1400px] px-3 sm:px-4 md:px-6 mt-2 sm:mt-3 md:mt-4">

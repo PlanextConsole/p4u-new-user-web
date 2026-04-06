@@ -1,13 +1,14 @@
-"use client"; 
+"use client";
 import { ChevronLeft, ChevronRight, Star, MapPin, Clock } from "lucide-react";
-import { useRef } from "react";
-import Image from "next/image"; 
-import plumbing1 from "../images/top-servicer/plumbing1.png";
-import plumbing2 from "../images/top-servicer/plumbing2.png";
-import wedding1 from "../images/top-servicer/wedding1.png";
-import wedding2 from "../images/top-servicer/plumbing1.png";
+import { useRef, useState, useEffect } from "react";
+import Image from "next/image";
+import { catalogApi } from "@/lib/api/catalog"; 
+import plumbing1 from "../../images/top-servicer/plumbing1.png";
+import plumbing2 from "../../images/top-servicer/plumbing2.png";
+import wedding1 from "../../images/top-servicer/wedding1.png";
+import wedding2 from "../../images/top-servicer/plumbing1.png";
 
-const services = [
+const FALLBACK_SERVICES = [
   {
     image: plumbing1,
     badge: "New Arrival",
@@ -56,6 +57,23 @@ const services = [
 
 export default function TopServicer() {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [services, setServices] = useState<{ image: string | typeof plumbing1; badge: string | null; title: string; provider: string; rating: number; duration: string; description: string; price: number; distance: string }[]>([]);
+
+  useEffect(() => {
+    catalogApi.getVendors({ limit: 8 }).then((res) => {
+      setServices(res.data.map((v) => ({
+        image: v.logoUrl || v.logo || plumbing1,
+        badge: null,
+        title: v.businessName || v.name,
+        provider: v.description ?? v.businessName ?? v.name,
+        rating: v.rating ?? 0,
+        duration: "",
+        description: v.description ?? "",
+        price: 0,
+        distance: "",
+      })));
+    }).catch(() => {});
+  }, []);
 
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {

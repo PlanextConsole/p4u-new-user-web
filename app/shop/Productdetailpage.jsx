@@ -5,7 +5,7 @@ import {
   ChevronRight, Shield, Truck, RotateCcw, CheckCircle,
   ThumbsUp, ChevronDown, ChevronUp, Tag, Zap
 } from "lucide-react";
-import { useCart } from "@/app/cart/CartContext";
+import { useCart } from "@/providers/CartContext";
 
 function enrich(p) {
   if (!p) return {};
@@ -94,10 +94,8 @@ function enrich(p) {
   const specs = {
     ...baseSpecs,
     "Delivery Time": p.duration || "Standard",
-    Rating: String(p.rating || 4.5) + " / 5",
-    "Total Reviews": String(p.reviews || 0),
-    "In Stock": "Yes",
-    "Return Policy": "7 Days",
+    ...(p.rating ? { Rating: String(p.rating) + " / 5" } : {}),
+    ...(p.reviews ? { "Total Reviews": String(p.reviews) } : {}),
     ...(p.specs || {}),
   };
 
@@ -123,32 +121,7 @@ function enrich(p) {
     };
   })();
 
-  const reviewsList = p.reviewsList || [
-    {
-      id: 1, name: "Arun K.", verified: true, rating: 5,
-      title: "Excellent product!",
-      comment: `Really happy with ${name}. Great quality and fast delivery. Exactly as described. Would recommend to everyone!`,
-      date: "20 Feb 2026", helpful: 14, images: [],
-    },
-    {
-      id: 2, name: "Meena R.", verified: true, rating: 4,
-      title: "Good value for money",
-      comment: `Good product overall. ${name} met my expectations. Packaging was secure and delivery was on time.`,
-      date: "12 Feb 2026", helpful: 8, images: [],
-    },
-    {
-      id: 3, name: "Vijay S.", verified: false, rating: 5,
-      title: "Highly recommend",
-      comment: `Excellent value for money. I purchased ${name} and I'm very satisfied with the quality. Will buy again.`,
-      date: "5 Feb 2026", helpful: 6, images: [],
-    },
-    {
-      id: 4, name: "Priya T.", verified: true, rating: 4,
-      title: "Great purchase",
-      comment: `Satisfied with the product. Good build quality and fast shipping. Customer support was also very helpful.`,
-      date: "28 Jan 2026", helpful: 3, images: [],
-    },
-  ];
+  const reviewsList = p.reviewsList || [];
 
   const images = p.images?.length
     ? p.images
@@ -156,11 +129,7 @@ function enrich(p) {
       ? [p.imageUrl]
       : null;
 
-  const availableOffers = p.availableOffers || [
-    "Bank Offer: 10% off on SBI Credit Cards, up to ₹1,000.",
-    "Special Price: Get extra 5% off on orders above ₹500.",
-    "No Cost EMI on select cards for orders above ₹3,000.",
-  ];
+  const availableOffers = p.availableOffers || [];
 
   return { ...p, specs, description, ratingBreakdown, reviewsList, images, availableOffers, originalPrice };
 }

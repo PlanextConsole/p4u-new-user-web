@@ -1,10 +1,9 @@
 "use client"; 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { useCart } from "@/app/cart/CartContext";
-import {
-  TEAL, TEAL_GRAD, TEAL_DARK,
-  VENDORS, BannerSlide, Vendor, Product,
-} from "./serviceData"; 
+import { useCart } from "@/providers/CartContext";
+import { TEAL, TEAL_GRAD, TEAL_DARK, BannerSlide, Vendor, Product } from "./serviceData";
+import { catalogApi } from "@/lib/api/catalog";
+import { commerceApi } from "@/lib/api/commerce"; 
 const IC = {
   Star:      ({ fill="#f59e0b",size=13 }:{ fill?:string;size?:number })=><svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={fill} strokeWidth="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
   MapPin:    ()=><svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>,
@@ -177,11 +176,37 @@ function SlideContent({ slide, vendorName }:{ slide:BannerSlide; vendorName:stri
   );
 }
  
+function VendorLogo({ vendor }: { vendor: Vendor }) {
+  const boxStyle = {
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    background: vendor.logoColor,
+    display: "flex" as const,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    fontSize: 30,
+    flexShrink: 0,
+    boxShadow: `0 4px 16px ${vendor.logoColor}44`,
+    border: `2px solid ${vendor.logoColor}66`,
+    overflow: "hidden" as const,
+  };
+  const logo = vendor.logo || "";
+  if (logo.startsWith("http") || logo.startsWith("/")) {
+    return (
+      <div style={boxStyle}>
+        <img src={logo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      </div>
+    );
+  }
+  return <div style={boxStyle}>{logo || "🏪"}</div>;
+}
+
 function VendorInfoCard({ vendor }:{ vendor:Vendor }) {
   return (
     <div style={{ background:"#fff",borderRadius:16,padding:"16px 20px",marginBottom:16,boxShadow:"0 2px 12px rgba(0,0,0,0.08)",border:"1px solid #f0f0f0" }}>
       <div style={{ display:"flex",gap:16,alignItems:"flex-start",flexWrap:"wrap" }}>
-         <div style={{ width:72,height:72,borderRadius:16,background:vendor.logoColor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,flexShrink:0,boxShadow:`0 4px 16px ${vendor.logoColor}44`,border:`2px solid ${vendor.logoColor}66` }}>{vendor.logo}</div>
+         <VendorLogo vendor={vendor}/>
      <div style={{ flex:1,minWidth:220 }}>
           <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:3 }}>
             <h2 style={{ fontSize:18,fontWeight:800,color:"#111827",margin:0 }}>{vendor.name}</h2>
@@ -229,19 +254,6 @@ function VendorInfoCard({ vendor }:{ vendor:Vendor }) {
     </div>
   );
 } 
-const PRODUCT_FALLBACKS = [
-  "https://images.unsplash.com/photo-1621905251918-d87c1a8b8856?w=400&h=300&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1504148455328-c376907d081c?w=400&h=300&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&h=300&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=400&h=300&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1517487881594-2787fef5ebf7?w=400&h=300&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=400&h=300&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=400&h=300&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1534131707946-e4a053c9ef2a?w=400&h=300&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1504439468489-c8920d796a29?w=400&h=300&fit=crop&auto=format",
-];
-const getProductFallback = (id: number) => PRODUCT_FALLBACKS[id % PRODUCT_FALLBACKS.length]; 
 interface ProductCardProps {
   product:    Product;
   vendorId:   string;
@@ -254,12 +266,15 @@ function ProductCard({ product, vendorId, vendorName }: ProductCardProps) {
   const qtyInCart = cartItem?.qty ?? 0;
 
   const [fav,     setFav]     = useState(false);
-  const [flash,   setFlash]   = useState(false);  
-  const [imgSrc,  setImgSrc]  = useState(() => product.image || getProductFallback(product.id));
-  const [errored, setErrored] = useState(false);
+  const [flash,   setFlash]   = useState(false);
+  const [imgOk,   setImgOk]   = useState(Boolean(product.image?.trim()));
+
+  useEffect(() => {
+    setImgOk(Boolean(product.image?.trim()));
+  }, [product.image]);
 
   const handleImgError = () => {
-    if (!errored) { setErrored(true); setImgSrc(getProductFallback(product.id)); }
+    setImgOk(false);
   }; 
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -268,8 +283,8 @@ function ProductCard({ product, vendorId, vendorName }: ProductCardProps) {
       name:          product.name,
       price:         product.price,
       originalPrice: product.originalPrice ?? product.price,
-      image:         imgSrc,
-      imageUrl:      imgSrc,
+      image:         product.image || "",
+      imageUrl:      product.image || "",
       vendor:        vendorName,
       vendorId:      vendorId,
       delivery:      `Delivery in ${product.duration}`,
@@ -292,14 +307,18 @@ function ProductCard({ product, vendorId, vendorName }: ProductCardProps) {
       onMouseLeave={e=>{ (e.currentTarget as HTMLDivElement).style.transform="translateY(0)";   (e.currentTarget as HTMLDivElement).style.boxShadow="0 2px 12px rgba(0,0,0,0.08)"; }}
     > 
       <div style={{ position:"relative",height:155,background:"#f3f4f6",flexShrink:0,overflow:"hidden" }}>
+        {imgOk && product.image ? (
         <img
-          src={imgSrc}
+          src={product.image}
           alt={product.name}
           onError={handleImgError}
           style={{ width:"100%",height:"100%",objectFit:"cover",display:"block",transition:"transform .35s" }}
           onMouseEnter={e=>(e.currentTarget as HTMLImageElement).style.transform="scale(1.06)"}
           onMouseLeave={e=>(e.currentTarget as HTMLImageElement).style.transform="scale(1)"}
-        /> 
+        />
+        ) : (
+        <div style={{ width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#9ca3af" }}>No image</div>
+        )} 
         {product.badge && (
           <div style={{ position:"absolute",top:8,left:8,background:"rgba(255,255,255,0.93)",color:TEAL,fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:12,border:`1.5px solid ${TEAL}`,backdropFilter:"blur(4px)",zIndex:2 }}>
             {product.badge}
@@ -393,31 +412,36 @@ function ProductCard({ product, vendorId, vendorName }: ProductCardProps) {
 }
  
 function RatingSection({ vendor }:{ vendor:Vendor }) {
-  const rows=[{stars:5,pct:65},{stars:4,pct:20},{stars:3,pct:8},{stars:2,pct:4},{stars:1,pct:3}];
   return (
     <div style={{ background:"#f9fafb",borderRadius:14,padding:"18px 20px",marginTop:16 }}>
       <h4 style={{ fontSize:14,fontWeight:700,color:"#111827",margin:"0 0 14px" }}>Ratings & Reviews</h4>
       <div style={{ display:"flex",gap:28,alignItems:"center" }}>
         <div style={{ textAlign:"center",flexShrink:0 }}>
-          <div style={{ fontSize:52,fontWeight:900,color:"#111827",lineHeight:1 }}>{vendor.rating}</div>
-          <div style={{ display:"flex",justifyContent:"center",gap:2,margin:"6px 0 4px" }}>{[1,2,3,4,5].map(n=><IC.Star key={n} size={15} fill={n<=Math.floor(vendor.rating)?"#f59e0b":"#e5e7eb"}/>)}</div>
-          <div style={{ fontSize:11,color:"#6b7280" }}>{vendor.totalRatings} Ratings</div>
+          <div style={{ fontSize:52,fontWeight:900,color:"#111827",lineHeight:1 }}>{(Number.isFinite(vendor.rating) ? vendor.rating : 0).toFixed(1)}</div>
+          <div style={{ display:"flex",justifyContent:"center",gap:2,margin:"6px 0 4px" }}>{[1,2,3,4,5].map(n=><IC.Star key={n} size={15} fill={n<=Math.floor(Number.isFinite(vendor.rating)?vendor.rating:0)?"#f59e0b":"#e5e7eb"}/>)}</div>
+          <div style={{ fontSize:11,color:"#6b7280" }}>{vendor.totalRatings} {vendor.totalRatings === 1 ? "rating" : "ratings"}</div>
         </div>
-        <div style={{ flex:1 }}>
-          {rows.map(row=>(
-            <div key={row.stars} style={{ display:"flex",alignItems:"center",gap:8,marginBottom:7 }}>
-              <span style={{ fontSize:11,color:"#6b7280",width:10,textAlign:"right" }}>{row.stars}</span>
-              <IC.Star size={10}/>
-              <div style={{ flex:1,height:6,background:"#e5e7eb",borderRadius:3,overflow:"hidden" }}>
-                <div style={{ height:"100%",width:`${row.pct}%`,background:TEAL_GRAD,borderRadius:3 }}/>
-              </div>
-              <span style={{ fontSize:11,color:"#6b7280",width:30 }}>{row.pct}%</span>
-            </div>
-          ))}
-        </div>
+        <p style={{ flex:1,fontSize:12,color:"#6b7280",margin:0,lineHeight:1.5 }}>
+          Star breakdown appears here when the API provides distribution data.
+        </p>
       </div>
     </div>
   );
+}
+
+function defaultBanners(vendorName: string, icon: string): BannerSlide[] {
+  const title = vendorName.length > 32 ? `${vendorName.slice(0, 29)}…` : vendorName;
+  return [
+    {
+      gradient: TEAL_DARK,
+      accent: "#34d399",
+      title: title.toUpperCase().replace(/\s+/g, "\n"),
+      subtitle: "Products & services",
+      handle: "",
+      badgeText: "VENDOR",
+      icon: icon.startsWith("http") ? "🏪" : icon,
+    },
+  ];
 } 
 interface VendorDetailPageProps {
   vendorId: string;
@@ -425,7 +449,81 @@ interface VendorDetailPageProps {
 }
 
 export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageProps) {
-  const vendor: Vendor | null = VENDORS[vendorId] ?? null;
+  const [vendor, setVendor] = useState<Vendor | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const idParam = vendorId.trim();
+    if (!idParam) {
+      setVendor(null);
+      setLoading(false);
+      return;
+    }
+    const numId = Number(idParam);
+    const catalogId = Number.isFinite(numId) && String(numId) === idParam ? numId : idParam;
+
+    Promise.all([
+      catalogApi.getVendor(catalogId),
+      catalogApi.getVendorProducts(catalogId, { limit: 50 }),
+      commerceApi.getReviewSummary("vendor", catalogId).catch(() => ({
+        averageRating: 0,
+        totalReviews: 0,
+        breakdown: {} as Record<number, number>,
+      })),
+    ])
+      .then(([v, productsRes, summary]) => {
+        if (cancelled) return;
+        const logoUrl = v.logoUrl?.trim();
+        const logoText = v.logo?.trim();
+        const logoDisplay = logoUrl || logoText || "🏪";
+        const bannerIcon = logoUrl ? "🏪" : logoDisplay;
+        setVendor({
+          id: String(v.id),
+          name: v.name,
+          logo: logoDisplay,
+          logoColor: "#0d9488",
+          verified: Boolean(v.isActive),
+          since: "—",
+          category: "General",
+          subCategory: v.description ?? "",
+          delivery: "—",
+          rating: summary.averageRating || v.rating || 0,
+          totalRatings: summary.totalReviews,
+          phone: "",
+          email: "",
+          address: "",
+          description: v.description ?? "",
+          openHours: "—",
+          distance: "—",
+          banners: defaultBanners(v.name, bannerIcon),
+          tabs: ["Services", "About", "Gallery"],
+          products: productsRes.data.map((p) => ({
+            id: p.id,
+            name: p.name,
+            brand: (p.metadata?.brand as string) ?? "",
+            price: p.price,
+            originalPrice: p.originalPrice ?? p.price,
+            rating: 0,
+            reviews: 0,
+            image: p.image ?? (p.metadata?.imageUrl as string) ?? "",
+            description: p.description ?? "",
+            duration: "—",
+            category: "General",
+          })),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setVendor(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [vendorId]);
 
   const [activeTab,        setActiveTab]        = useState(0);
   const [search,           setSearch]           = useState("");
@@ -438,10 +536,13 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
     Array.from(new Set((vendor?.products??[]).map(p=>p.brand))).sort()
   ,[vendor]);
  
-  const chips = useMemo(()=>{
+  const chips = useMemo(() => {
     if (!vendor) return [];
-    return ["All Service",...Array.from(new Set(vendor.products.map(p=>p.category.split(" ")[0])))];
-  },[vendor]);
+    const parts = vendor.products
+      .map((p) => p.category.trim().split(/\s+/)[0])
+      .filter(Boolean);
+    return ["All Service", ...Array.from(new Set(parts))];
+  }, [vendor]);
 
   const filtered = useMemo(()=>{
     if (!vendor) return [];
@@ -468,12 +569,22 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
 
   const toggleBrand=(b:string)=>setSelectedBrands(p=>p.includes(b)?p.filter(x=>x!==b):[...p,b]);
 
-  if (!vendor) return (
-    <div style={{  display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,fontFamily:"'Segoe UI',system-ui,sans-serif" }}>
-      <p style={{ color:"#9ca3af",fontSize:14 }}>Vendor not found.</p>
-      <button onClick={onBack} style={{ color:TEAL,background:"none",border:"none",fontSize:13,cursor:"pointer",textDecoration:"underline" }}>← Back to Services</button>
-    </div>
-  );
+  if (loading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 280, flexDirection: "column", gap: 12 }}>
+        <p style={{ color: "#9ca3af", fontSize: 14 }}>Loading vendor…</p>
+      </div>
+    );
+  }
+
+  if (!vendor) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, fontFamily: "'Segoe UI',system-ui,sans-serif" }}>
+        <p style={{ color: "#9ca3af", fontSize: 14 }}>Vendor not found.</p>
+        <button onClick={onBack} style={{ color: TEAL, background: "none", border: "none", fontSize: 13, cursor: "pointer", textDecoration: "underline" }}>← Back to Services</button>
+      </div>
+    );
+  }
  
   const renderServices = ()=>(
     <div> 
@@ -535,11 +646,18 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
 
   const renderGallery = ()=>(
     <div style={{ display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12 }}>
-      {vendor.products.slice(0,9).map((p,i)=>(
+      {vendor.products.length === 0 ? (
+        <p style={{ gridColumn: "1 / -1", textAlign: "center", color: "#9ca3af", fontSize: 14 }}>No gallery images yet.</p>
+      ) : (
+      vendor.products.slice(0,9).map((p,i)=>(
         <div key={i} style={{ borderRadius:12,overflow:"hidden",aspectRatio:"1",background:"#e5e7eb" }}>
-          <img src={p.image} alt={p.name} style={{ width:"100%",height:"100%",objectFit:"cover" }}/>
+          {p.image ? (
+            <img src={p.image} alt={p.name} style={{ width:"100%",height:"100%",objectFit:"cover" }}/>
+          ) : (
+            <div style={{ width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#9ca3af" }}>No image</div>
+          )}
         </div>
-      ))}
+      )))}
     </div>
   );
 

@@ -10,16 +10,16 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 
-import visaLogo from "../images/payment-logos/img1.png";
-import amexLogo from "../images/payment-logos/img2.png";
-import discoverLogo from "../images/payment-logos/img3.png";
-import mastercardLogo from "../images/payment-logos/img4.png";
-import maestroLogo from "../images/payment-logos/img5.png";
-import paypalLogo from "../images/payment-logos/img6.png";
+import visaLogo from "../../images/payment-logos/img1.png";
+import amexLogo from "../../images/payment-logos/img2.png";
+import discoverLogo from "../../images/payment-logos/img3.png";
+import mastercardLogo from "../../images/payment-logos/img4.png";
+import maestroLogo from "../../images/payment-logos/img5.png";
+import paypalLogo from "../../images/payment-logos/img6.png";
 
-import appstore from "../images/footer/appstore.png";
-import footerLogo from "../images/footer/footer-logo.png";
-import googleplay from "../images/footer/googleplay.png";
+import appstore from "../../images/footer/appstore.png";
+import footerLogo from "../../images/footer/footer-logo.png";
+import googleplay from "../../images/footer/googleplay.png";
 
 export default function Footer() {
   const infoLinks = [

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Image from "next/image";
 import {
   Star, Clock, ChevronLeft, ChevronRight, Search, X,
@@ -11,10 +11,10 @@ import {
 import { useRouter } from "next/navigation";
 import {
   TEAL_GRADIENT,
-  CATEGORIES,
-  RAW_SELLERS,
   ITEMS_PER_PAGE,
 } from "./constants";
+import { catalogApi } from "@/lib/api/catalog";
+import { Loader2 } from "lucide-react";
  
 
 type ShopItem = {
@@ -29,6 +29,7 @@ type ShopItem = {
   number: string
   pts: number
   vendorId: string
+  category: string
   badge?: {
     label: string
     bg: string
@@ -155,6 +156,7 @@ function Pagination({ current, total, onChange }: PaginationProps) {
   );
 }  
 type SidebarContentProps = {
+  categories: string[]
   selectedCats: string[]
   toggleCat: (cat: string) => void
   offersOnly: boolean
@@ -165,6 +167,7 @@ type SidebarContentProps = {
 }
 
 function SidebarContent({
+  categories,
   selectedCats,
   toggleCat,
   offersOnly,
@@ -181,7 +184,7 @@ function SidebarContent({
           <ChevronRight className="w-4 h-4 text-gray-300" />
         </div>
         <div className="px-4 py-3 space-y-2.5">
-          {CATEGORIES.map((cat) => {
+          {categories.map((cat) => {
             const active = selectedCats.includes(cat);
             return (
               <label key={cat} className="flex items-center gap-3 cursor-pointer">
@@ -277,7 +280,10 @@ function SidebarContent({
 }
  
 export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorId: string) => void }) {
+  const [sellers, setSellers] = useState<ShopItem[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
+  const [loadingSellers, setLoadingSellers] = useState(true);
 
   const [sortBy, setSortBy] = useState("popularity");
   const [search, setSearch] = useState("");
@@ -286,8 +292,35 @@ export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorI
   const [offersOnly, setOffersOnly] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  useEffect(() => {
+    catalogApi.getCategories({ limit: 50 }).then((res) => {
+      const cats = (res as any)?.data ?? res;
+      const names = (Array.isArray(cats) ? cats : []).map((c: any) => c.name).filter(Boolean);
+      if (names.length) setCategories(names);
+    }).catch(() => {});
+
+    catalogApi.getVendors({ limit: 50 }).then((res) => {
+      setSellers(res.data.map((v, i) => ({
+        id: v.id,
+        title: v.businessName || v.name,
+        number: (v as any).phone || `Vendor ${i + 1}`,
+        provider: v.description ?? v.businessName ?? v.name,
+        category: "General",
+        vendorId: String(v.id),
+        rating: v.rating ?? 0,
+        duration: "30 Min",
+        price: 0,
+        pts: 100,
+        distance: "1.0 km",
+        badge: null,
+        image: v.logoUrl || v.logo || v.banner || "",
+        reviews: 0,
+      })));
+    }).catch(() => {}).finally(() => setLoadingSellers(false));
+  }, []);
+
   const filtered = useMemo(() => {
-    let data = [...RAW_SELLERS];
+    let data = [...sellers];
     if (selectedCats.length) data = data.filter((s) => selectedCats.includes(s.category));
     if (search) data = data.filter((s) => s.title.toLowerCase().includes(search.toLowerCase()));
     if (ratingFilter) data = data.filter((s) => s.rating >= ratingFilter);
@@ -297,7 +330,7 @@ export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorI
     else if (sortBy === "newest") data.sort((a, b) => b.id - a.id);
     else data.sort((a, b) => b.rating - a.rating);
     return data;
-  }, [selectedCats, search, ratingFilter, offersOnly, sortBy]);
+  }, [sellers, selectedCats, search, ratingFilter, offersOnly, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
@@ -323,7 +356,7 @@ export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorI
     setPage(1);
   };
 
-  const sidebarProps = { selectedCats, toggleCat, offersOnly, setOffersOnly, ratingFilter, setRatingFilter, setPage };
+  const sidebarProps = { categories, selectedCats, toggleCat, offersOnly, setOffersOnly, ratingFilter, setRatingFilter, setPage };
 
   return (
     <div className="min-h-screen font-sans">
@@ -443,7 +476,11 @@ export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorI
             Seller List
           </h2>
  
-          {paginated.length === 0 ? (
+          {loadingSellers ? (
+            <div className="flex justify-center py-24">
+              <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+            </div>
+          ) : paginated.length === 0 ? (
             <div className="bg-white rounded-2xl py-24 text-center text-gray-400 shadow-sm">
               No sellers found. Try adjusting your filters.
             </div>

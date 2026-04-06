@@ -1,11 +1,11 @@
-"use client"; 
-import { useState, useMemo, ReactNode } from "react";
+"use client";
+import { useState, useEffect, useMemo, ReactNode } from "react";
 import {
-  TEAL, TEAL_GRAD, TEAL_DARK, CATS,
-  SELLERS, VENDORS,
+  TEAL, TEAL_GRAD, TEAL_DARK,
   RATING_OPTS, REVIEW_OPTS, OFFER_OPTS, SORT_OPTS, PER_PAGE,
   Seller,
 } from "./serviceData";
+import { catalogApi } from "@/lib/api/catalog";
  
 const IC = {
   Star:      ({ fill="#f59e0b",size=13 }:{ fill?:string;size?:number })=><svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={fill} strokeWidth="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
@@ -40,13 +40,14 @@ function Accordion({ label, isOpen, toggle, children }:{ label:string;isOpen:boo
 }
  
 interface SidebarProps {
+  categories:string[];
   selectedCats:string[]; toggleCat:(c:string)=>void;
   ratingFilter:number[]; toggleRating:(v:number)=>void;
   reviewFilter:string[]; toggleReview:(v:string)=>void;
   offerFilter:string[];  toggleOffer:(v:string)=>void;
 }
 
-function Sidebar({ selectedCats,toggleCat,ratingFilter,toggleRating,reviewFilter,toggleReview,offerFilter,toggleOffer }:SidebarProps) {
+function Sidebar({ categories,selectedCats,toggleCat,ratingFilter,toggleRating,reviewFilter,toggleReview,offerFilter,toggleOffer }:SidebarProps) {
   const [catsOpen,   setCatsOpen]   = useState(true);
   const [ratingOpen, setRatingOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -61,7 +62,7 @@ function Sidebar({ selectedCats,toggleCat,ratingFilter,toggleRating,reviewFilter
         </button>
         {catsOpen&&(
           <div style={{ padding:"6px 0" }}>
-            {CATS.map(cat=>{
+            {categories.map(cat=>{
               const active=selectedCats.includes(cat);
               return (
                 <div key={cat} onClick={()=>toggleCat(cat)} style={{ display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"pointer",background:active?"#f0fdf4":"transparent",transition:"background .15s" }}>
@@ -115,26 +116,12 @@ function Sidebar({ selectedCats,toggleCat,ratingFilter,toggleRating,reviewFilter
   );
 }
  
-const FALLBACK_IMGS = [
-  "https://images.unsplash.com/photo-1621905251918-d87c1a8b8856?w=600&h=360&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&h=360&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1504148455328-c376907d081c?w=600&h=360&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&h=360&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=600&h=360&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1534131707946-e4a053c9ef2a?w=600&h=360&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=600&h=360&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=600&h=360&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1517487881594-2787fef5ebf7?w=600&h=360&fit=crop&auto=format",
-  "https://images.unsplash.com/photo-1504439468489-c8920d796a29?w=600&h=360&fit=crop&auto=format",
-];
-const getFallback = (id: number) => FALLBACK_IMGS[id % FALLBACK_IMGS.length]; 
 function ServiceCard({ service, onClick }: { service: Seller; onClick: () => void }) {
   const [fav,     setFav]     = useState(false);
-  const [imgSrc,  setImgSrc]  = useState(() => service.image || getFallback(service.id));
-  const [errored, setErrored] = useState(false);
+  const [imgOk,   setImgOk]   = useState(Boolean(service.image?.trim()));
 
   const handleError = () => {
-    if (!errored) { setErrored(true); setImgSrc(getFallback(service.id)); }
+    setImgOk(false);
   };
 
   return (
@@ -145,14 +132,18 @@ function ServiceCard({ service, onClick }: { service: Seller; onClick: () => voi
       onClick={onClick}
     >
       <div style={{ position:"relative",height:200,background:"#e5e7eb",flexShrink:0,overflow:"hidden" }}>
+        {imgOk && service.image ? (
         <img
-          src={imgSrc}
+          src={service.image}
           alt={service.title}
           onError={handleError}
           style={{ width:"100%",height:"100%",objectFit:"cover",display:"block",transition:"transform .4s" }}
           onMouseEnter={e=>(e.currentTarget as HTMLImageElement).style.transform="scale(1.05)"}
           onMouseLeave={e=>(e.currentTarget as HTMLImageElement).style.transform="scale(1)"}
         />
+        ) : (
+        <div style={{ width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#9ca3af" }}>No image</div>
+        )}
         <div style={{ position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.28) 0%,transparent 55%)",pointerEvents:"none" }}/>
         {service.badge&&<div style={{ position:"absolute",top:10,left:10,background:service.badge.bg,color:"#fff",fontSize:10,fontWeight:700,padding:"4px 10px",borderRadius:20,border:"2px solid rgba(255,255,255,0.65)",backdropFilter:"blur(4px)",zIndex:2 }}>{service.badge.label}</div>}
         <div style={{ position:"absolute",bottom:10,left:10,background:"rgba(255,255,255,0.93)",backdropFilter:"blur(4px)",borderRadius:20,padding:"3px 9px",display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,color:"#374151",zIndex:2 }}><IC.MapPin/>{service.distance}</div>
@@ -183,6 +174,8 @@ interface ServiceListPageProps {
 }
 
 export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps) {
+  const [sellers, setSellers] = useState<Seller[]>([]);
+  const [serviceCats, setServiceCats] = useState<string[]>([]);
   const [selectedCats,     setSelectedCats]     = useState<string[]>([]);
   const [ratingFilter,     setRatingFilter]     = useState<number[]>([]);
   const [reviewFilter,     setReviewFilter]     = useState<string[]>([]);
@@ -192,6 +185,32 @@ export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps
   const [page,             setPage]             = useState(1);
   const [activeTopFilters, setActiveTopFilters] = useState<string[]>(["Popularity","Rating","Offers","Delivery Time"]);
   const [drawerOpen,       setDrawerOpen]       = useState(false);
+
+  useEffect(() => {
+    catalogApi.getCategories({ limit: 50 }).then((res) => {
+      const cats = (res as any)?.data ?? res;
+      const names = (Array.isArray(cats) ? cats : []).map((c: any) => c.name).filter(Boolean);
+      if (names.length) setServiceCats(names);
+    }).catch(() => {});
+
+    catalogApi.getServices({ limit: 50 }).then((res) => {
+      setSellers(res.data.map((s): Seller => ({
+        id: s.id,
+        title: s.name,
+        image: s.metadata?.imageUrl ?? "",
+        provider: s.description ?? s.name,
+        description: s.description ?? "",
+        rating: 0,
+        price: s.price,
+        duration: s.duration ?? "",
+        distance: "",
+        category: "General",
+        badge: null,
+        hasOffer: false,
+        vendorId: String(s.vendorId),
+      })));
+    }).catch(() => {});
+  }, []);
 
   const mkToggleStr = (setter: React.Dispatch<React.SetStateAction<string[]>>) => (val: string) => {
     setter(p => p.includes(val) ? p.filter(x => x !== val) : [...p, val]);
@@ -207,7 +226,7 @@ export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps
   const toggleOffer  = mkToggleStr(setOfferFilter);
 
   const filtered = useMemo(() => {
-    let d = [...SELLERS];
+    let d = [...sellers];
     if (selectedCats.length)  d = d.filter(s => selectedCats.includes(s.category));
     if (search)                d = d.filter(s => s.title.toLowerCase().includes(search.toLowerCase()));
     if (ratingFilter.length)  d = d.filter(s => ratingFilter.some(m => s.rating >= m));
@@ -217,7 +236,7 @@ export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps
     else if (sortBy === "newest") d.sort((a,b) => b.id - a.id);
     else d.sort((a,b) => b.rating - a.rating);
     return d;
-  }, [selectedCats, search, ratingFilter, offerFilter, sortBy]);
+  }, [sellers, selectedCats, search, ratingFilter, offerFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE);
@@ -232,7 +251,7 @@ export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps
     return ps;
   };
 
-  const sidebarProps: SidebarProps = { selectedCats,toggleCat,ratingFilter,toggleRating,reviewFilter,toggleReview,offerFilter,toggleOffer };
+  const sidebarProps: SidebarProps = { categories:serviceCats,selectedCats,toggleCat,ratingFilter,toggleRating,reviewFilter,toggleReview,offerFilter,toggleOffer };
 
   return (
     <div   >
@@ -259,7 +278,7 @@ export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps
             <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10 }}>
               <div style={{ display:"flex",alignItems:"center",gap:10 }}>
                 <span style={{ fontSize:14,fontWeight:700,color:"#111827" }}>Services</span>
-                <span style={{ fontSize:12,color:"#9ca3af" }}>Showing 1–{filtered.length} of {SELLERS.length}</span>
+                <span style={{ fontSize:12,color:"#9ca3af" }}>Showing 1–{filtered.length} of {sellers.length}</span>
               </div>
               <button onClick={()=>setDrawerOpen(true)} className="svc-mobile-filter" style={{ display:"none",alignItems:"center",gap:5,padding:"6px 12px",border:"1px solid #e5e7eb",borderRadius:8,background:"#fff",fontSize:12,cursor:"pointer" }}>
                 <IC.Filter/> Filters

@@ -1,9 +1,12 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
-import { useAuth } from "@/app/auth/AuthContext";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import { useAuth } from "@/providers/AuthContext";
+import AuthGuard from "@/providers/AuthGuard";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react"; 
+import { profileApi, type Address as ProfileAddress } from "@/lib/api/profile";
+import { notificationsApi } from "@/lib/api/notifications";
+import { commerceApi } from "@/lib/api/commerce";
 type ActivePage =
   | "profile" | "saved-addresses" | "select-language" | "notification"
   | "your-orders" | "reviews-ratings" | "your-favourites" | "refer-earn"
@@ -87,26 +90,11 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
 ];
 
 
-const IMG = {
-  iphone: "https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=200&q=80",
-  samsung: "https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=200&q=80",
-  headphones: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200&q=80",
-  macbook: "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=200&q=80",
-  watch: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200&q=80",
-  cleaning: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=200&q=80",
-  ac: "https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=200&q=80",
-  plumbing: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=200&q=80",
-  electrical: "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=200&q=80",
-  spa: "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=200&q=80",
-  dental: "https://images.unsplash.com/photo-1606811971618-4486d14f3f99?w=200&q=80",
-  photo: "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=200&q=80",
-  restaurant: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=200&q=80",
-};
 
 const ProductImg = ({ src, alt, className = "" }: { src: string; alt: string; className?: string }) => (
   <img src={src} alt={alt} loading="lazy"
     className={`object-cover rounded-xl bg-slate-100 ${className}`}
-    onError={e => { (e.currentTarget as HTMLImageElement).src = "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200&q=80"; }} />
+    onError={e => { (e.currentTarget as HTMLImageElement).src = ""; }} />
 );
 
 
@@ -176,18 +164,45 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
   </div>
 );
 
-const PrimaryBtn = ({ children, onClick, className = "", disabled = false }: {
-  children: React.ReactNode; onClick?: () => void; className?: string; disabled?: boolean;
+const PrimaryBtn = ({
+  children,
+  onClick,
+  className = "",
+  disabled = false,
+  type = "button",
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  className?: string;
+  disabled?: boolean;
+  type?: "button" | "submit";
 }) => (
-  <button onClick={onClick} disabled={disabled}
+  <button
+    type={type}
+    onClick={onClick}
+    disabled={disabled}
     className={`px-5 py-2.5 rounded-xl text-sm text-white font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer ${className}`}
-    style={{ background: PRIMARY_GRADIENT }}>
+    style={{ background: PRIMARY_GRADIENT }}
+  >
     {children}
   </button>
 );
-const GhostBtn = ({ children, onClick, className = "" }: { children: React.ReactNode; onClick?: () => void; className?: string }) => (
-  <button onClick={onClick}
-    className={`px-5 py-2.5 rounded-xl text-sm font-medium border border-slate-200 bg-white text-slate-600 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer ${className}`}>
+const GhostBtn = ({
+  children,
+  onClick,
+  className = "",
+  type = "button",
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  className?: string;
+  type?: "button" | "submit";
+}) => (
+  <button
+    type={type}
+    onClick={onClick}
+    className={`px-5 py-2.5 rounded-xl text-sm font-medium border border-slate-200 bg-white text-slate-600 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer ${className}`}
+  >
     {children}
   </button>
 );
@@ -238,6 +253,17 @@ function PageProfile() {
   const [backImg, setBackImg] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  useEffect(() => {
+    profileApi.getMe().then((p) => {
+      setForm((f) => ({
+        ...f,
+        name: p.name ?? f.name,
+        mobile: p.phone ?? f.mobile,
+        email: p.email ?? f.email,
+      }));
+    }).catch(() => { /* offline or not logged in */ });
+  }, []);
+
   const setField = (k: string, v: string | boolean) => {
     setForm(f => ({ ...f, [k]: v }));
     setErrors(e => { const n = { ...e }; delete n[k]; return n; });
@@ -255,7 +281,14 @@ function PageProfile() {
     setErrors(e); return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = () => { if (!validate()) return; setSaved(true); setTimeout(() => setSaved(false), 3000); };
+  const handleSubmit = async () => {
+    if (!validate()) return;
+    try {
+      await profileApi.updateMe({ name: form.name, email: form.email, phone: form.mobile });
+    } catch { /* save locally even if API fails */ }
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+  };
 
   return (
     <div className="p-5 sm:p-6">
@@ -306,89 +339,307 @@ function PageProfile() {
   );
 }
 
-interface Address { id: number; name: string; dist: string; addr: string; phone: string; }
+type AddressFormState = {
+  label: string;
+  fullName: string;
+  phone: string;
+  line1: string;
+  line2: string;
+  city: string;
+  state: string;
+  pincode: string;
+  isDefault: boolean;
+};
+
+const EMPTY_ADDRESS_FORM: AddressFormState = {
+  label: "",
+  fullName: "",
+  phone: "",
+  line1: "",
+  line2: "",
+  city: "",
+  state: "",
+  pincode: "",
+  isDefault: false,
+};
+
+function profileAddressToForm(a: ProfileAddress): AddressFormState {
+  return {
+    label: a.label ?? "",
+    fullName: a.fullName ?? "",
+    phone: a.phone ?? "",
+    line1: a.line1,
+    line2: a.line2 ?? "",
+    city: a.city,
+    state: a.state,
+    pincode: a.pincode,
+    isDefault: a.isDefault,
+  };
+}
+
+function formToPayload(f: AddressFormState): Omit<ProfileAddress, "id"> {
+  return {
+    label: f.label.trim() || "Home",
+    fullName: f.fullName.trim(),
+    phone: f.phone.trim(),
+    line1: f.line1.trim(),
+    line2: f.line2.trim() || undefined,
+    city: f.city.trim(),
+    state: f.state.trim(),
+    pincode: f.pincode.trim().replace(/\s/g, ""),
+    country: "India",
+    isDefault: f.isDefault,
+  };
+}
+
+function validateAddressForm(f: AddressFormState): Record<string, string> {
+  const e: Record<string, string> = {};
+  if (!f.fullName.trim()) e.fullName = "Recipient name is required";
+  if (!f.phone.trim()) e.phone = "Phone number is required";
+  else if (!/^\d{10}$/.test(f.phone.replace(/\D/g, ""))) e.phone = "Enter a valid 10-digit mobile number";
+  if (!f.line1.trim()) e.line1 = "Address line 1 is required (house / street)";
+  if (!f.city.trim()) e.city = "City is required";
+  if (!f.state.trim()) e.state = "State is required";
+  if (!f.pincode.trim()) e.pincode = "PIN code is required";
+  else if (!/^\d{6}$/.test(f.pincode.replace(/\s/g, ""))) e.pincode = "Enter a valid 6-digit PIN code";
+  return e;
+}
+
+function SavedAddressFormFields({
+  values,
+  errors,
+  onChange,
+  idPrefix,
+}: {
+  values: AddressFormState;
+  errors: Record<string, string>;
+  onChange: (patch: Partial<AddressFormState>) => void;
+  idPrefix: string;
+}) {
+  const digitsPhone = (v: string) => v.replace(/\D/g, "").slice(0, 10);
+  const digitsPin = (v: string) => v.replace(/\D/g, "").slice(0, 6);
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Input
+          placeholder="Address label (e.g. Home, Office)"
+          value={values.label}
+          onChange={(ev) => onChange({ label: ev.target.value })}
+          error={errors.label}
+        />
+        <Input
+          placeholder="Recipient full name *"
+          value={values.fullName}
+          onChange={(ev) => onChange({ fullName: ev.target.value })}
+          error={errors.fullName}
+        />
+      </div>
+      <Input
+        placeholder="Mobile number (10 digits) *"
+        value={values.phone}
+        onChange={(ev) => onChange({ phone: digitsPhone(ev.target.value) })}
+        error={errors.phone}
+      />
+      <Input
+        placeholder="Address line 1 — flat, house no., street *"
+        value={values.line1}
+        onChange={(ev) => onChange({ line1: ev.target.value })}
+        error={errors.line1}
+      />
+      <Input
+        placeholder="Address line 2 — area, landmark (optional)"
+        value={values.line2}
+        onChange={(ev) => onChange({ line2: ev.target.value })}
+        error={errors.line2}
+      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Input
+          placeholder="City *"
+          value={values.city}
+          onChange={(ev) => onChange({ city: ev.target.value })}
+          error={errors.city}
+        />
+        <Input
+          placeholder="State *"
+          value={values.state}
+          onChange={(ev) => onChange({ state: ev.target.value })}
+          error={errors.state}
+        />
+      </div>
+      <Input
+        placeholder="PIN code (6 digits) *"
+        value={values.pincode}
+        onChange={(ev) => onChange({ pincode: digitsPin(ev.target.value) })}
+        error={errors.pincode}
+      />
+      <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+        <input
+          type="checkbox"
+          id={`${idPrefix}-default`}
+          checked={values.isDefault}
+          onChange={(ev) => onChange({ isDefault: ev.target.checked })}
+          className="w-4 h-4 accent-emerald-700 rounded border-slate-300"
+        />
+        Set as default delivery address
+      </label>
+    </div>
+  );
+}
 
 function PageSavedAddresses() {
   const [showMap, setShowMap] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
+  const [editId, setEditId] = useState<string | number | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [mapForm, setMapForm] = useState({ name: "", phone: "", address: "" });
+  const [mapForm, setMapForm] = useState<AddressFormState>({ ...EMPTY_ADDRESS_FORM });
   const [mapErrors, setMapErrors] = useState<Record<string, string>>({});
-  const [addrForm, setAddrForm] = useState({ name: "", phone: "", address: "" });
+  const [addrForm, setAddrForm] = useState<AddressFormState>({ ...EMPTY_ADDRESS_FORM });
   const [addrErrors, setAddrErrors] = useState<Record<string, string>>({});
-  const [addresses, setAddresses] = useState<Address[]>([
-    { id: 1, name: "Planext4u", dist: "7.08 km away", addr: "No11a, Pandivan Street, Sengunthar Nagar, Tiruttani, Tamil Nadu - 631209", phone: "0123456789" },
-    { id: 2, name: "Home", dist: "22.8 km away", addr: "15B, MG Road, Chennai, Tamil Nadu - 600001", phone: "9876543210" },
-  ]);
+  const [addresses, setAddresses] = useState<ProfileAddress[]>([]);
 
-  const validateForm = (f: typeof addrForm, setE: (e: Record<string, string>) => void) => {
-    const e: Record<string, string> = {};
-    if (!f.name.trim()) e.name = "Name is required";
-    if (!f.phone.trim()) e.phone = "Phone number is required";
-    else if (!/^\d{10}$/.test(f.phone)) e.phone = "Enter valid 10-digit phone";
-    if (!f.address.trim()) e.address = "Address is required";
-    setE(e); return Object.keys(e).length === 0;
+  useEffect(() => {
+    profileApi
+      .getAddresses()
+      .then((items) => setAddresses(items))
+      .catch(() => {});
+  }, []);
+
+  const applyAddrPatch = (patch: Partial<AddressFormState>) => {
+    setAddrForm((f) => ({ ...f, ...patch }));
+    setAddrErrors((prev) => {
+      const next = { ...prev };
+      for (const k of Object.keys(patch)) delete next[k];
+      return next;
+    });
   };
 
-  const addFromMap = () => {
-    if (!validateForm(mapForm, setMapErrors)) return;
-    setAddresses(a => [...a, { id: Date.now(), name: mapForm.name, dist: "Current location", addr: mapForm.address, phone: mapForm.phone }]);
-    setMapForm({ name: "", phone: "", address: "" }); setMapErrors({}); setShowMap(false);
+  const applyMapPatch = (patch: Partial<AddressFormState>) => {
+    setMapForm((f) => ({ ...f, ...patch }));
+    setMapErrors((prev) => {
+      const next = { ...prev };
+      for (const k of Object.keys(patch)) delete next[k];
+      return next;
+    });
   };
-  const saveNewAddr = () => {
-    if (!validateForm(addrForm, setAddrErrors)) return;
-    setAddresses(a => [...a, { id: Date.now(), name: addrForm.name, dist: "New address", addr: addrForm.address, phone: addrForm.phone }]);
-    setAddrForm({ name: "", phone: "", address: "" }); setAddrErrors({}); setShowAddForm(false);
+
+  const runValidate = (f: AddressFormState, setE: (e: Record<string, string>) => void) => {
+    const e = validateAddressForm({ ...f, phone: f.phone.replace(/\D/g, "") });
+    setE(e);
+    return Object.keys(e).length === 0;
   };
-  const startEdit = (a: Address) => { setEditId(a.id); setAddrForm({ name: a.name, phone: a.phone, address: a.addr }); setAddrErrors({}); setShowAddForm(false); };
-  const saveEdit = () => {
-    if (!validateForm(addrForm, setAddrErrors)) return;
-    setAddresses(a => a.map(x => x.id === editId ? { ...x, name: addrForm.name, phone: addrForm.phone, addr: addrForm.address } : x));
-    setEditId(null); setAddrForm({ name: "", phone: "", address: "" }); setAddrErrors({});
+
+  const addFromMap = async () => {
+    const f = { ...mapForm, phone: mapForm.phone.replace(/\D/g, "") };
+    if (!runValidate(f, setMapErrors)) return;
+    try {
+      const created = await profileApi.createAddress(formToPayload(f));
+      setAddresses((a) => [created, ...a]);
+    } catch {
+      /* optional toast */
+    }
+    setMapForm({ ...EMPTY_ADDRESS_FORM });
+    setMapErrors({});
+    setShowMap(false);
   };
-  const cancelEdit = () => { setEditId(null); setAddrForm({ name: "", phone: "", address: "" }); setAddrErrors({}); };
-  const removeAddress = (id: number) => setAddresses(a => a.filter(x => x.id !== id));
-  const mapField = (k: keyof typeof mapForm, v: string) => { setMapForm(f => ({ ...f, [k]: v })); setMapErrors(e => { const n = { ...e }; delete n[k]; return n; }); };
-  const addrField = (k: keyof typeof addrForm, v: string) => { setAddrForm(f => ({ ...f, [k]: v })); setAddrErrors(e => { const n = { ...e }; delete n[k]; return n; }); };
+
+  const saveNewAddr = async () => {
+    const f = { ...addrForm, phone: addrForm.phone.replace(/\D/g, "") };
+    if (!runValidate(f, setAddrErrors)) return;
+    try {
+      const created = await profileApi.createAddress(formToPayload(f));
+      setAddresses((a) => [created, ...a]);
+    } catch {
+      /* optional toast */
+    }
+    setAddrForm({ ...EMPTY_ADDRESS_FORM });
+    setAddrErrors({});
+    setShowAddForm(false);
+  };
+
+  const startEdit = (a: ProfileAddress) => {
+    setEditId(a.id);
+    setAddrForm(profileAddressToForm(a));
+    setAddrErrors({});
+    setShowAddForm(false);
+  };
+
+  const saveEdit = async () => {
+    const f = { ...addrForm, phone: addrForm.phone.replace(/\D/g, "") };
+    if (!runValidate(f, setAddrErrors)) return;
+    if (editId == null) return;
+    try {
+      const updated = await profileApi.updateAddress(editId, formToPayload(f));
+      setAddresses((a) => a.map((x) => (x.id === editId ? updated : x)));
+    } catch {
+      /* optional toast */
+    }
+    setEditId(null);
+    setAddrForm({ ...EMPTY_ADDRESS_FORM });
+    setAddrErrors({});
+  };
+
+  const cancelEdit = () => {
+    setEditId(null);
+    setAddrForm({ ...EMPTY_ADDRESS_FORM });
+    setAddrErrors({});
+  };
+
+  const removeAddress = async (id: string | number) => {
+    try {
+      await profileApi.deleteAddress(id);
+    } catch {
+      /* still remove locally if needed */
+    }
+    setAddresses((a) => a.filter((x) => x.id !== id));
+  };
+
+  const formatAddressLines = (a: ProfileAddress) =>
+    [a.line1, a.line2, [a.city, a.state, a.pincode].filter(Boolean).join(", ")].filter(Boolean);
 
   return (
     <div className="p-5 sm:p-6">
       {showMap && (
-        <Modal onClose={() => { setShowMap(false); setMapForm({ name: "", phone: "", address: "" }); setMapErrors({}); }}>
+        <Modal
+          onClose={() => {
+            setShowMap(false);
+            setMapForm({ ...EMPTY_ADDRESS_FORM });
+            setMapErrors({});
+          }}
+        >
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-            <span className="text-sm font-semibold text-slate-800">My Location on Map</span>
-            <button onClick={() => { setShowMap(false); setMapForm({ name: "", phone: "", address: "" }); setMapErrors({}); }}
-              className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 cursor-pointer"><IcX /></button>
+            <span className="text-sm font-semibold text-slate-800">Add address</span>
+            <button
+              type="button"
+              onClick={() => {
+                setShowMap(false);
+                setMapForm({ ...EMPTY_ADDRESS_FORM });
+                setMapErrors({});
+              }}
+              className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 cursor-pointer"
+            >
+              <IcX />
+            </button>
           </div>
-          <div className="relative h-44 overflow-hidden" style={{ background: "linear-gradient(160deg,#c7f1e3 0%,#a0e4cc 40%,#7dd3b8 100%)" }}>
-            <svg className="absolute inset-0 w-full h-full opacity-20" viewBox="0 0 400 176" preserveAspectRatio="none">
-              {[0, 44, 88, 132, 176].map(y => <line key={y} x1="0" y1={y} x2="400" y2={y} stroke="#0e2220" strokeWidth="1" />)}
-              {[0, 50, 100, 150, 200, 250, 300, 350, 400].map(x => <line key={x} x1={x} y1="0" x2={x} y2="176" stroke="#0e2220" strokeWidth="1" />)}
-            </svg>
-            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 176" preserveAspectRatio="none">
-              <rect x="160" y="0" width="14" height="176" fill="white" opacity="0.6" rx="2" />
-              <rect x="0" y="72" width="400" height="12" fill="white" opacity="0.6" rx="2" />
-              <rect x="280" y="0" width="8" height="176" fill="white" opacity="0.4" rx="2" />
-            </svg>
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full">
-              <div className="w-9 h-9 rounded-full border-4 border-white flex items-center justify-center shadow-lg" style={{ background: PRIMARY_GRADIENT }}>
-                <span className="text-white"><IcMapPin s={14} /></span>
+          <div className="relative h-36 overflow-hidden" style={{ background: "linear-gradient(160deg,#c7f1e3 0%,#a0e4cc 40%,#7dd3b8 100%)" }}>
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              <div
+                className="w-9 h-9 rounded-full border-4 border-white flex items-center justify-center shadow-lg"
+                style={{ background: PRIMARY_GRADIENT }}
+              >
+                <span className="text-white">
+                  <IcMapPin s={14} />
+                </span>
               </div>
-              <div className="w-2 h-2 rounded-full bg-slate-600 mx-auto -mt-0.5 opacity-50" />
             </div>
-            <div className="absolute bottom-2 right-3 bg-white/90 rounded-lg px-2 py-1 text-[10px] text-slate-600 font-medium shadow">Tamil Nadu, India</div>
+            <p className="absolute bottom-2 left-3 right-3 text-center text-[10px] text-slate-600">
+              Enter delivery details below (matches profile API: line1, city, state, PIN).
+            </p>
           </div>
           <div className="p-5 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <Input placeholder="Full Name *" value={mapForm.name} onChange={e => mapField("name", e.target.value)} error={mapErrors.name} />
-              <Input placeholder="Phone (10 digits) *" value={mapForm.phone} onChange={e => mapField("phone", e.target.value.replace(/\D/g, "").slice(0, 10))} error={mapErrors.phone} />
-            </div>
-            <Input placeholder="Full Address *" value={mapForm.address} onChange={e => mapField("address", e.target.value)} error={mapErrors.address} />
+            <SavedAddressFormFields values={mapForm} errors={mapErrors} onChange={applyMapPatch} idPrefix="map" />
             <div className="flex gap-3 pt-1">
-              <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm border-emerald-200 text-emerald-800 hover:bg-emerald-50 cursor-pointer">
-                <IcNav /> Use My Location
-              </button>
-              <PrimaryBtn onClick={addFromMap} className="flex-1">Add Address</PrimaryBtn>
+              <PrimaryBtn type="button" onClick={addFromMap} className="flex-1">
+                Save address
+              </PrimaryBtn>
             </div>
           </div>
         </Modal>
@@ -396,60 +647,115 @@ function PageSavedAddresses() {
 
       <SectionTitle>Saved Addresses</SectionTitle>
       <div className="flex flex-wrap gap-3 mb-5">
-        <button onClick={() => setShowMap(true)}
-          className="flex items-center gap-2 text-sm border border-emerald-200 text-emerald-800 rounded-xl px-4 py-2 hover:bg-emerald-50 cursor-pointer transition-all">
-          <IcNav /> Use Current Location
+        <button
+          type="button"
+          onClick={() => setShowMap(true)}
+          className="flex items-center gap-2 text-sm border border-emerald-200 text-emerald-800 rounded-xl px-4 py-2 hover:bg-emerald-50 cursor-pointer transition-all"
+        >
+          <IcNav /> Add from map view
         </button>
-        <button onClick={() => { setShowAddForm(v => !v); setEditId(null); setAddrErrors({}); }}
+        <button
+          type="button"
+          onClick={() => {
+            setShowAddForm((v) => !v);
+            setEditId(null);
+            setAddrErrors({});
+          }}
           className="flex items-center gap-2 text-sm text-white rounded-xl px-4 py-2 cursor-pointer transition-all"
-          style={{ background: PRIMARY_GRADIENT }}>
+          style={{ background: PRIMARY_GRADIENT }}
+        >
           <IcPlus /> {showAddForm ? "Cancel" : "Add New Address"}
         </button>
       </div>
 
       {showAddForm && (
         <div className="mb-5 p-4 rounded-xl border border-emerald-100 bg-emerald-50/30 space-y-3">
-          <p className="text-xs font-medium text-slate-700">New Address Details</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input placeholder="Full Name *" value={addrForm.name} onChange={e => addrField("name", e.target.value)} error={addrErrors.name} />
-            <Input placeholder="Phone (10 digits) *" value={addrForm.phone} onChange={e => addrField("phone", e.target.value.replace(/\D/g, "").slice(0, 10))} error={addrErrors.phone} />
-          </div>
-          <Input placeholder="Full Address *" value={addrForm.address} onChange={e => addrField("address", e.target.value)} error={addrErrors.address} />
+          <p className="text-xs font-medium text-slate-700">New address</p>
+          <SavedAddressFormFields values={addrForm} errors={addrErrors} onChange={applyAddrPatch} idPrefix="new" />
           <div className="flex gap-3">
-            <PrimaryBtn onClick={saveNewAddr}>Save Address</PrimaryBtn>
-            <GhostBtn onClick={() => { setShowAddForm(false); setAddrErrors({}); }}>Cancel</GhostBtn>
+            <PrimaryBtn type="button" onClick={saveNewAddr}>
+              Save Address
+            </PrimaryBtn>
+            <GhostBtn
+              type="button"
+              onClick={() => {
+                setShowAddForm(false);
+                setAddrErrors({});
+              }}
+            >
+              Cancel
+            </GhostBtn>
           </div>
         </div>
       )}
 
       {editId !== null && (
         <div className="mb-5 p-4 rounded-xl border border-amber-100 bg-amber-50/30 space-y-3">
-          <p className="text-xs font-medium text-slate-700">Edit Address</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input placeholder="Full Name *" value={addrForm.name} onChange={e => addrField("name", e.target.value)} error={addrErrors.name} />
-            <Input placeholder="Phone (10 digits) *" value={addrForm.phone} onChange={e => addrField("phone", e.target.value.replace(/\D/g, "").slice(0, 10))} error={addrErrors.phone} />
-          </div>
-          <Input placeholder="Full Address *" value={addrForm.address} onChange={e => addrField("address", e.target.value)} error={addrErrors.address} />
+          <p className="text-xs font-medium text-slate-700">Edit address</p>
+          <SavedAddressFormFields values={addrForm} errors={addrErrors} onChange={applyAddrPatch} idPrefix="edit" />
           <div className="flex gap-3">
-            <PrimaryBtn onClick={saveEdit}>Save Changes</PrimaryBtn>
-            <GhostBtn onClick={cancelEdit}>Cancel</GhostBtn>
+            <PrimaryBtn type="button" onClick={saveEdit}>
+              Save Changes
+            </PrimaryBtn>
+            <GhostBtn type="button" onClick={cancelEdit}>
+              Cancel
+            </GhostBtn>
           </div>
         </div>
       )}
 
       <div className="space-y-3">
-        {addresses.map(a => (
-          <div key={a.id} className="flex items-start gap-3 p-4 rounded-xl border border-slate-100 bg-white hover:border-emerald-100 hover:shadow-sm transition-all">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 mt-0.5" style={{ background: PRIMARY_GRADIENT }}><IcStore /></div>
+        {addresses.length === 0 && (
+          <p className="text-sm text-slate-500 py-6 text-center border border-dashed border-slate-200 rounded-xl">
+            No saved addresses yet. Add one for faster checkout.
+          </p>
+        )}
+        {addresses.map((a) => (
+          <div
+            key={a.id}
+            className="flex items-start gap-3 p-4 rounded-xl border border-slate-100 bg-white hover:border-emerald-100 hover:shadow-sm transition-all"
+          >
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 mt-0.5"
+              style={{ background: PRIMARY_GRADIENT }}
+            >
+              <IcStore />
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-800">{a.name}</p>
-              <p className="text-xs font-medium mt-0.5" style={{ color: PRIMARY_SOLID }}>{a.dist}</p>
-              <p className="text-xs text-slate-500 mt-0.5 break-words">{a.addr}</p>
-              <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><IcNav s={11} /> {a.phone}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm font-medium text-slate-800">{a.label || "Address"}</p>
+                {a.isDefault && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                    Default
+                  </span>
+                )}
+              </div>
+              {(a.fullName || a.phone) && (
+                <p className="text-xs text-slate-600 mt-1">
+                  {[a.fullName, a.phone].filter(Boolean).join(" · ")}
+                </p>
+              )}
+              {formatAddressLines(a).map((line, i) => (
+                <p key={i} className="text-xs text-slate-500 mt-0.5 break-words">
+                  {line}
+                </p>
+              ))}
             </div>
             <div className="flex gap-1.5 shrink-0">
-              <button onClick={() => startEdit(a)} className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition-all cursor-pointer"><IcEdit /></button>
-              <button onClick={() => removeAddress(a.id)} className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all cursor-pointer"><IcTrash /></button>
+              <button
+                type="button"
+                onClick={() => startEdit(a)}
+                className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition-all cursor-pointer"
+              >
+                <IcEdit />
+              </button>
+              <button
+                type="button"
+                onClick={() => removeAddress(a.id)}
+                className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all cursor-pointer"
+              >
+                <IcTrash />
+              </button>
             </div>
           </div>
         ))}
@@ -480,16 +786,28 @@ function PageSelectLanguage() {
 }
  
 function PageNotification() {
-  const NOTIFS_INIT = [
-    { id: 1, read: false, icon: <IcShoppingBag />, title: "Order Delivered!", body: "Your order #ORD-4821 has been delivered successfully. Rate your experience.", time: "2 min ago", color: "bg-emerald-50 border-emerald-100", iconBg: "bg-emerald-100 text-emerald-700" },
-    { id: 2, read: false, icon: <IcGift />, title: "Refer & Earn Bonus!", body: "Your friend Meena R. joined using your code. You've earned 150 reward points!", time: "1 hr ago", color: "bg-amber-50 border-amber-100", iconBg: "bg-amber-100 text-amber-700" },
-    { id: 3, read: false, icon: <IcTruck />, title: "Order Shipped", body: "Your order #ORD-4820 (Apple iPhone 17) has been shipped and is on its way.", time: "3 hrs ago", color: "bg-blue-50 border-blue-100", iconBg: "bg-blue-100 text-blue-700" },
-    { id: 4, read: true, icon: <IcStar />, title: "Review Reminder", body: "How was your experience with Apple iPhone 17? Leave a review and earn points.", time: "Yesterday", color: "bg-slate-50 border-slate-100", iconBg: "bg-slate-100 text-slate-500" },
-    { id: 5, read: true, icon: <IcCreditCard />, title: "Payment Confirmed", body: "Payment of ₹1,02,700 received for order #ORD-4820. Thank you for shopping!", time: "2 days ago", color: "bg-slate-50 border-slate-100", iconBg: "bg-slate-100 text-slate-500" },
-    { id: 6, read: true, icon: <IcTag />, title: "Special Offer!", body: "Flash sale! Get up to 40% off on electronics this weekend only. Shop now.", time: "3 days ago", color: "bg-slate-50 border-slate-100", iconBg: "bg-slate-100 text-slate-500" },
-  ];
-  const [notifications, setNotifications] = useState(NOTIFS_INIT);
-  const markAllRead = () => setNotifications(n => n.map(x => ({ ...x, read: true })));
+  type NotifItem = { id: number; read: boolean; icon: React.ReactNode; title: string; body: string; time: string; color: string; iconBg: string };
+  const [notifications, setNotifications] = useState<NotifItem[]>([]);
+  useEffect(() => {
+    notificationsApi.getMyNotifications({ limit: 50 }).then((apiItems) => {
+      if (!apiItems.length) return;
+      setNotifications(apiItems.map((n) => ({
+        id: n.id,
+        read: n.isRead,
+        icon: <IcBell />,
+        title: n.title || "Notification",
+        body: n.body || "",
+        time: new Date(n.createdAt).toLocaleString(),
+        color: n.isRead ? "bg-slate-50 border-slate-100" : "bg-emerald-50 border-emerald-100",
+        iconBg: n.isRead ? "bg-slate-100 text-slate-500" : "bg-emerald-100 text-emerald-700",
+      })));
+    }).catch(() => {});
+  }, []);
+  const markAllRead = async () => {
+    const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
+    await Promise.allSettled(unreadIds.map((id) => notificationsApi.markAsRead(id)));
+    setNotifications(n => n.map(x => ({ ...x, read: true })));
+  };
   const unread = notifications.filter(n => !n.read).length;
 
   return (
@@ -504,7 +822,10 @@ function PageNotification() {
       </div>
       <div className="space-y-2">
         {notifications.map(n => (
-          <div key={n.id} onClick={() => setNotifications(ns => ns.map(x => x.id === n.id ? { ...x, read: true } : x))}
+          <div key={n.id} onClick={() => {
+            notificationsApi.markAsRead(n.id).catch(() => {});
+            setNotifications(ns => ns.map(x => x.id === n.id ? { ...x, read: true } : x));
+          }}
             className={`flex gap-3 p-4 rounded-xl border cursor-pointer transition-all hover:shadow-sm ${n.read ? "bg-white border-slate-100" : n.color}`}>
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${n.iconBg}`}>{n.icon}</div>
             <div className="flex-1 min-w-0">
@@ -524,21 +845,9 @@ function PageNotification() {
  
 type OrderTab = "Shop" | "Services" | "Booking";
 
-const SHOP_ORDERS = [
-  { id: "ORD-4821", title: "Apple iPhone 17 Ultramarine, 128 GB", sub: "Black, 128GB", vendor: "Planext4u", img: IMG.iphone, orig: "₹1,39,999", price: "₹1,02,700", off: "38% OFF", status: "Delivered", statusColor: "#22c55e", date: "Today, 3:45 PM" },
-  { id: "ORD-4820", title: "Samsung Galaxy S25 Ultra, 256GB", sub: "Phantom Black, 256GB", vendor: "Planext4u", img: IMG.samsung, orig: "₹1,29,999", price: "₹89,999", off: "31% OFF", status: "In Transit", statusColor: "#f59e0b", date: "Expected: Tomorrow" },
-  { id: "ORD-4815", title: "Sony WH-1000XM5 Headphones", sub: "Black", vendor: "Planext4u", img: IMG.headphones, orig: "₹34,990", price: "₹24,990", off: "29% OFF", status: "Processing", statusColor: "#3b82f6", date: "Est: 2-3 days" },
-];
-const SERVICE_ORDERS = [
-  { id: "SRV-201", title: "Home Deep Cleaning Service", sub: "3 BHK Package", vendor: "CleanPro", img: IMG.cleaning, orig: "₹2,500", price: "₹1,800", off: "28% OFF", status: "Scheduled", statusColor: "#8b5cf6", date: "Tomorrow, 10:00 AM" },
-  { id: "SRV-199", title: "AC Servicing & Gas Refill", sub: "Split AC (1.5 Ton)", vendor: "TechCool", img: IMG.ac, orig: "₹1,200", price: "₹899", off: "25% OFF", status: "Completed", statusColor: "#22c55e", date: "3 days ago" },
-  { id: "SRV-188", title: "Plumbing Repair Service", sub: "Pipe leak fix + check", vendor: "FixIt", img: IMG.plumbing, orig: "₹800", price: "₹599", off: "25% OFF", status: "Cancelled", statusColor: "#ef4444", date: "5 days ago" },
-];
-const BOOKING_ORDERS = [
-  { id: "BKG-90", title: "Sakthi Spa & Wellness", sub: "Full Body Massage – 60 min", vendor: "Sakthi Spa", img: IMG.spa, orig: "₹1,500", price: "₹1,100", off: "27% OFF", status: "Confirmed", statusColor: "#22c55e", date: "Sat, 15 Mar – 11:00 AM" },
-  { id: "BKG-88", title: "Dr. Priya's Dental Clinic", sub: "Teeth Cleaning + Checkup", vendor: "SmileCare", img: IMG.dental, orig: "₹800", price: "₹599", off: "25% OFF", status: "Upcoming", statusColor: "#3b82f6", date: "Mon, 17 Mar – 3:00 PM" },
-  { id: "BKG-82", title: "Photography Session", sub: "Outdoor portrait – 2 hrs", vendor: "ClickArt", img: IMG.photo, orig: "₹3,000", price: "₹2,200", off: "27% OFF", status: "Completed", statusColor: "#64748b", date: "20 Feb 2026" },
-];
+const SHOP_ORDERS: { id: string; title: string; sub: string; vendor: string; img: string; orig: string; price: string; off: string; status: string; statusColor: string; date: string }[] = [];
+const SERVICE_ORDERS: typeof SHOP_ORDERS = [];
+const BOOKING_ORDERS: typeof SHOP_ORDERS = [];
 
 function OrderCard({ item }: { item: typeof SHOP_ORDERS[0] }) {
   return (
@@ -568,7 +877,31 @@ function OrderCard({ item }: { item: typeof SHOP_ORDERS[0] }) {
 
 function PageYourOrders() {
   const [tab, setTab] = useState<OrderTab>("Shop");
-  const data = tab === "Shop" ? SHOP_ORDERS : tab === "Services" ? SERVICE_ORDERS : BOOKING_ORDERS;
+  const [apiOrders, setApiOrders] = useState<any[]>([]);
+  const data = apiOrders.length ? apiOrders : (tab === "Shop" ? SHOP_ORDERS : tab === "Services" ? SERVICE_ORDERS : BOOKING_ORDERS);
+
+  useEffect(() => {
+    const customerId = localStorage.getItem("p4u_customer_id") || "";
+    if (!customerId) return;
+    commerceApi.getOrders(customerId, { limit: 50 }).then((res: any) => {
+      if (res.data?.length) {
+        setApiOrders(res.data.map((o: any) => {
+          const lines = Array.isArray(o.items) ? o.items : Array.isArray(o.metadata?.lines) ? o.metadata.lines : [];
+          const itemCount = lines.reduce((s: number, l: any) => s + (l.quantity || 1), 0);
+          const statusColor = o.status === "delivered" || o.status === "completed" ? "#22c55e"
+            : o.status === "cancelled" ? "#ef4444"
+            : o.status === "created" || o.status === "pending" ? "#f59e0b"
+            : "#3b82f6";
+          return {
+            id: o.orderRef || o.id, img: "", title: `Order #${o.orderRef || o.id}`,
+            sub: `${itemCount} item${itemCount !== 1 ? "s" : ""}`, price: `₹${o.totalAmount}`,
+            status: o.status, statusColor, date: new Date(o.createdAt).toLocaleDateString(),
+          };
+        }));
+      }
+    }).catch(() => {});
+  }, []);
+
   return (
     <div className="p-5 sm:p-6">
       <SectionTitle>My Orders</SectionTitle>
@@ -580,35 +913,72 @@ function PageYourOrders() {
  
 type ReviewTab = "Shop" | "Services" | "Booking";
 
-const SHOP_REVIEWS = [
-  { id: 1, img: IMG.iphone, title: "Apple iPhone 17 Ultramarine, 128 GB", rating: 5, label: "Excellent!", comment: "Superb phone! Camera quality is amazing and battery lasts all day.", date: "5 May 2025" },
-  { id: 2, img: IMG.headphones, title: "Sony WH-1000XM5 Headphones", rating: 4, label: "Very Good!", comment: "Great noise cancellation. Build quality could be a tad better.", date: "18 Apr 2025" },
-  { id: 3, img: IMG.macbook, title: "MacBook Air M3, 8GB RAM 256GB", rating: 5, label: "Excellent!", comment: "Blazing fast, silent, and the display is gorgeous. Totally worth it.", date: "2 Mar 2025" },
-];
-const SERVICE_REVIEWS = [
-  { id: 4, img: IMG.cleaning, title: "Home Deep Cleaning Service", rating: 5, label: "Excellent!", comment: "The team was very professional and thorough. House sparkles now!", date: "12 May 2025" },
-  { id: 5, img: IMG.ac, title: "AC Servicing & Gas Refill", rating: 4, label: "Good!", comment: "Quick service, AC cools much better now. Slightly delayed arrival.", date: "28 Apr 2025" },
-];
-const BOOKING_REVIEWS = [
-  { id: 6, img: IMG.spa, title: "Sakthi Spa & Wellness – Full Body Massage", rating: 5, label: "Excellent!", comment: "The best massage experience I've ever had. Totally relaxed now.", date: "10 May 2025" },
-  { id: 7, img: IMG.dental, title: "SmileCare – Dental Cleaning", rating: 4, label: "Very Good!", comment: "Dr. Priya was very gentle and explained everything. Clean and modern.", date: "1 May 2025" },
-];
+const SHOP_REVIEWS: { id: number; img: string; title: string; rating: number; label: string; comment: string; date: string }[] = [];
+const SERVICE_REVIEWS: typeof SHOP_REVIEWS = [];
+const BOOKING_REVIEWS: typeof SHOP_REVIEWS = [];
 
 function PageReviews() {
   const [tab, setTab] = useState<ReviewTab>("Shop");
   const [showForm, setShowForm] = useState(false);
+  const [selectedTargetId, setSelectedTargetId] = useState<string | number | null>(null);
   const [rating, setRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [errors, setErrors] = useState<{ rating?: string; text?: string }>({});
   const [submitted, setSubmitted] = useState(false);
+  const [apiReviewMap, setApiReviewMap] = useState<Record<number, { rating: number; comment?: string; date?: string }>>({});
   const data = tab === "Shop" ? SHOP_REVIEWS : tab === "Services" ? SERVICE_REVIEWS : BOOKING_REVIEWS;
   const ratingLabels = ["", "Bad", "OK", "Good", "Very Good", "Excellent"];
 
-  const submit = () => {
+  useEffect(() => {
+    const targetType = tab === "Shop" ? "product" : tab === "Services" ? "service" : "booking";
+    Promise.all(
+      data.map((item) =>
+        commerceApi
+          .getReviews(targetType, item.id)
+          .then((rows) => ({ id: item.id, row: rows[0] }))
+          .catch(() => ({ id: item.id, row: undefined }))
+      )
+    ).then((results) => {
+      const next: Record<number, { rating: number; comment?: string; date?: string }> = {};
+      for (const r of results) {
+        if (r.row) {
+          next[r.id] = {
+            rating: r.row.rating,
+            comment: r.row.comment,
+            date: new Date(r.row.createdAt).toLocaleDateString(),
+          };
+        }
+      }
+      setApiReviewMap(next);
+    });
+  }, [tab]);
+
+  const submit = async () => {
     const e: { rating?: string; text?: string } = {};
     if (rating === 0) e.rating = "Please select a star rating";
     if (!reviewText.trim()) e.text = "Please write your review";
     setErrors(e); if (Object.keys(e).length > 0) return;
+    const targetType = tab === "Shop" ? "product" : tab === "Services" ? "service" : "booking";
+    if (selectedTargetId) {
+      try {
+        await commerceApi.createReview({
+          targetType,
+          targetId: selectedTargetId,
+          rating,
+          comment: reviewText.trim(),
+        });
+        setApiReviewMap((prev) => ({
+          ...prev,
+          [selectedTargetId]: {
+            rating,
+            comment: reviewText.trim(),
+            date: new Date().toLocaleDateString(),
+          },
+        }));
+      } catch {
+        // Keep local success UX even when review API rejects target IDs from demo data.
+      }
+    }
     setSubmitted(true);
     setTimeout(() => { setSubmitted(false); setShowForm(false); setRating(0); setReviewText(""); }, 2500);
   };
@@ -655,25 +1025,31 @@ function PageReviews() {
       <SectionTitle>My Reviews & Ratings</SectionTitle>
       <TabBar<ReviewTab> tabs={["Shop", "Services", "Booking"]} active={tab} onSelect={setTab} />
       <div className="space-y-3">
-        {data.map(r => (
+        {data.map(r => {
+          const apiReview = apiReviewMap[r.id];
+          const ratingValue = apiReview?.rating ?? r.rating;
+          const commentValue = apiReview?.comment ?? r.comment;
+          const dateValue = apiReview?.date ?? r.date;
+          const labelValue = ratingLabels[ratingValue] || r.label;
+          return (
           <div key={r.id} className="flex gap-3 p-4 rounded-xl border border-slate-100 bg-white hover:shadow-sm transition-all">
             <ProductImg src={r.img} alt={r.title} className="w-14 h-16 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-slate-800 leading-snug">{r.title}</p>
               <div className="flex items-center gap-2 mt-1">
-                <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-white text-xs" style={{ background: "#22c55e" }}>{r.rating}.0 ★</span>
-                <span className="text-xs text-slate-500">{r.label}</span>
+                <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-white text-xs" style={{ background: "#22c55e" }}>{ratingValue}.0 ★</span>
+                <span className="text-xs text-slate-500">{labelValue}</span>
               </div>
-              <p className="text-xs text-slate-500 mt-1">{r.comment}</p>
-              <p className="text-[10px] text-slate-300 mt-1">Reviewed on {r.date}</p>
+              <p className="text-xs text-slate-500 mt-1">{commentValue}</p>
+              <p className="text-[10px] text-slate-300 mt-1">Reviewed on {dateValue}</p>
             </div>
             <div className="flex flex-col gap-1 shrink-0">
-              <button onClick={() => setShowForm(true)} className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition-all cursor-pointer"><IcEdit /></button>
+              <button onClick={() => { setSelectedTargetId(r.id); setShowForm(true); }} className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition-all cursor-pointer"><IcEdit /></button>
               <button className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all cursor-pointer"><IcTrash /></button>
               <button className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-all cursor-pointer"><IcShare /></button>
             </div>
           </div>
-        ))}
+        )})}
       </div>
     </div>
   );
@@ -681,32 +1057,50 @@ function PageReviews() {
  
 type FavTab = "Shop" | "Services" | "Booking";
 
-const initShopFavs = [
-  { id: 1, img: IMG.iphone, title: "Apple iPhone 17 Ultramarine, 128 GB", sub: "Black, 128GB", vendor: "Planext4u", orig: "₹1,39,999", price: "₹1,02,700", off: "38% OFF", liked: true },
-  { id: 2, img: IMG.headphones, title: "Sony WH-1000XM5 Headphones", sub: "Black", vendor: "Planext4u", orig: "₹34,990", price: "₹24,990", off: "29% OFF", liked: true },
-  { id: 3, img: IMG.watch, title: "Apple Watch Series 10 GPS 46mm", sub: "Midnight", vendor: "TechZone", orig: "₹49,900", price: "₹39,990", off: "20% OFF", liked: true },
-  { id: 4, img: IMG.macbook, title: "MacBook Air M3 8GB 256GB", sub: "Midnight", vendor: "AppleHub", orig: "₹1,14,900", price: "₹99,999", off: "13% OFF", liked: true },
-];
-const initServiceFavs = [
-  { id: 5, img: IMG.cleaning, title: "Home Deep Cleaning – 3 BHK", sub: "4 hrs session", vendor: "CleanPro", orig: "₹2,500", price: "₹1,800", off: "28% OFF", liked: true },
-  { id: 6, img: IMG.ac, title: "AC Service & Gas Refill", sub: "Split AC 1.5 Ton", vendor: "TechCool", orig: "₹1,200", price: "₹899", off: "25% OFF", liked: true },
-  { id: 7, img: IMG.electrical, title: "Electrical Wiring & Repair", sub: "Up to 5 points", vendor: "FixElec", orig: "₹900", price: "₹699", off: "22% OFF", liked: true },
-];
-const initBookingFavs = [
-  { id: 8, img: IMG.spa, title: "Sakthi Spa – Full Body Massage", sub: "60 min session", vendor: "Sakthi Spa", orig: "₹1,500", price: "₹1,100", off: "27% OFF", liked: true },
-  { id: 9, img: IMG.restaurant, title: "The Spice Garden Restaurant", sub: "Table for 2", vendor: "SpiceGarden", orig: "₹800", price: "₹599", off: "25% OFF", liked: true },
-  { id: 10, img: IMG.photo, title: "Photography Session – Outdoor", sub: "2 hrs portrait", vendor: "ClickArt", orig: "₹3,000", price: "₹2,200", off: "27% OFF", liked: true },
-];
+const initShopFavs: { id: number; img: string; title: string; sub: string; vendor: string; orig: string; price: string; off: string; liked: boolean }[] = [];
+const initServiceFavs: typeof initShopFavs = [];
+const initBookingFavs: typeof initShopFavs = [];
 
 function PageFavourites() {
   const [tab, setTab] = useState<FavTab>("Shop");
   const [shopFavs, setShopFavs] = useState(initShopFavs);
+
+  useEffect(() => {
+    profileApi.getWishlist().then((items) => {
+      if (items.length) {
+        setShopFavs(items.map((w) => ({
+          id: w.id, img: w.productImage ?? "", title: w.productName ?? `Product #${w.productId}`,
+          sub: "", vendor: "", orig: "", price: w.productPrice ? `₹${w.productPrice}` : "",
+          off: "", liked: true, apiProductId: w.productId,
+        })) as any);
+      }
+    }).catch(() => {});
+  }, []);
   const [serviceFavs, setServiceFavs] = useState(initServiceFavs);
   const [bookingFavs, setBookingFavs] = useState(initBookingFavs);
 
   const getList = () => tab === "Shop" ? shopFavs : tab === "Services" ? serviceFavs : bookingFavs;
   const getSetter = () => tab === "Shop" ? setShopFavs : tab === "Services" ? setServiceFavs : setBookingFavs;
-  const toggle = (id: number) => (getSetter() as React.Dispatch<React.SetStateAction<typeof initShopFavs>>)(list => list.map(x => x.id === id ? { ...x, liked: !x.liked } : x));
+  const toggle = async (id: number) => {
+    if (tab === "Shop") {
+      const item = shopFavs.find((x) => x.id === id) as (typeof initShopFavs[number] & { apiProductId?: number }) | undefined;
+      if (!item) return;
+      const productId = item.apiProductId ?? item.id;
+      setShopFavs((list) => list.map((x) => x.id === id ? { ...x, liked: !x.liked } : x));
+      try {
+        if (item.liked) {
+          await profileApi.removeFromWishlist(productId);
+        } else {
+          await profileApi.addToWishlist(productId);
+        }
+      } catch {
+        // Revert on failure to keep UI consistent with backend.
+        setShopFavs((list) => list.map((x) => x.id === id ? { ...x, liked: item.liked } : x));
+      }
+      return;
+    }
+    (getSetter() as React.Dispatch<React.SetStateAction<typeof initShopFavs>>)(list => list.map(x => x.id === id ? { ...x, liked: !x.liked } : x));
+  };
 
   return (
     <div className="p-5 sm:p-6">
@@ -742,7 +1136,13 @@ function PageFavourites() {
 } 
 function PageReferEarn() {
   const [copied, setCopied] = useState(false);
-  const code = "P4U2000";
+  const [code, setCode] = useState("P4U2000");
+
+  useEffect(() => {
+    profileApi.getReferralCode().then((res) => {
+      if (res.code) setCode(res.code);
+    }).catch(() => {});
+  }, []);
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(code).catch(() => { });
     setCopied(true); setTimeout(() => setCopied(false), 2000);
@@ -797,6 +1197,14 @@ type RewardTab = "Earned" | "Redeemed";
 
 function PageRewardPoints() {
   const [tab, setTab] = useState<RewardTab>("Earned");
+  const [totalPoints, setTotalPoints] = useState(1600);
+
+  useEffect(() => {
+    profileApi.getRewardPoints().then((res) => {
+      if (res.balance != null) setTotalPoints(res.balance);
+    }).catch(() => {});
+  }, []);
+
   const cards = [
     { label: "Liked", points: 300, icon: <IcThumbsUp />, bg: "#fef2f2", border: "#fecaca", iconColor: "#ef4444" },
     { label: "Shared", points: 400, icon: <IcShare2 />, bg: "#eff6ff", border: "#bfdbfe", iconColor: "#3b82f6" },
@@ -809,7 +1217,7 @@ function PageRewardPoints() {
       <div className="rounded-2xl p-5 mb-5 relative overflow-hidden" style={{ background: PRIMARY_GRADIENT }}>
         <div className="relative z-10">
           <p className="text-white/70 text-xs mb-1">Total Points Available</p>
-          <p className="text-white text-4xl font-semibold">1600</p>
+          <p className="text-white text-4xl font-semibold">{totalPoints}</p>
           <p className="text-white/50 text-xs mt-1.5">Points never expire • Redeem anytime</p>
         </div>
         <div className="absolute right-5 top-1/2 -translate-y-1/2 text-white opacity-10"><IcTrophy s={72} /></div>
@@ -842,6 +1250,15 @@ function PageBecomeVendor() {
   const [form, setForm] = useState({ shopName: "", gst: "", category: "", description: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [done, setDone] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Check if already submitted
+  useEffect(() => {
+    const { vendorApi } = require("@/lib/api/vendor");
+    vendorApi.getRegistrationStatus().then((res: any) => {
+      if (res.status) setDone(true);
+    }).catch(() => {});
+  }, []);
 
   const setField = (k: string, v: string) => { setForm(f => ({ ...f, [k]: v })); setErrors(e => { const n = { ...e }; delete n[k]; return n; }); };
 
@@ -915,7 +1332,16 @@ function PageBecomeVendor() {
             error={errors.description} />
           <div className="flex gap-3 pt-2">
             <GhostBtn onClick={() => setStep(1)}>← Back</GhostBtn>
-            <PrimaryBtn onClick={() => { if (validateStep2()) setDone(true); }}>Submit Application</PrimaryBtn>
+            <PrimaryBtn onClick={async () => {
+              if (!validateStep2()) return;
+              setSubmitting(true);
+              try {
+                const { vendorApi } = await import("@/lib/api/vendor");
+                await vendorApi.register({ businessName: form.shopName, description: form.description, phone: "" });
+              } catch { /* continue even if API fails */ }
+              setSubmitting(false);
+              setDone(true);
+            }}>{submitting ? "Submitting..." : "Submit Application"}</PrimaryBtn>
           </div>
         </div>
       )}
@@ -1044,7 +1470,7 @@ export default function ProfilePages() {
   const [activePage, setActivePage] = useState<ActivePage>("profile");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null); 
-const { isLoggedIn, isLoading } = useAuth();
+const { isLoggedIn } = useAuth();
   const router = useRouter();
   const renderPage = (): React.ReactNode => {
     switch (activePage) {
@@ -1065,15 +1491,8 @@ const { isLoggedIn, isLoading } = useAuth();
   };
 
   const activeLabel = SIDEBAR_ITEMS.find(s => s.id === activePage)?.label || "Profile";
-useEffect(() => {
-  if (!isLoading && !isLoggedIn) {
-    window.location.href = "/p4u"; 
-  }
-}, [isLoading, isLoggedIn]);
-
-if (isLoading) return null;
-if (!isLoggedIn) return null;
   return (
+    <AuthGuard>
     <>
       <style>{`
         
@@ -1136,5 +1555,6 @@ if (!isLoggedIn) return null;
         </div>
       </div>
     </>
+    </AuthGuard>
   );
 }

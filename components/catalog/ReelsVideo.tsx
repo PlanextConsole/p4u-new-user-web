@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { contentApi } from "@/lib/api/content";
 
 interface Product {
   id: number;
@@ -9,7 +10,7 @@ interface Product {
   video: string;
 }
 
-const products: Product[] = [
+const FALLBACK_PRODUCTS: Product[] = [
   { id: 1, username: "@style_icon",  caption: "Summer vibes ✨",   video: "/p4u/video/vid1.mp4" },
   { id: 2, username: "@tech_guru",   caption: "Unboxing the ...",  video: "/p4u/video/vid2.mp4" },
   { id: 3, username: "@foodie_life", caption: "Delicious! 🍕",     video: "/p4u/video/vid3.mp4" },
@@ -252,6 +253,20 @@ const BG_SPARKLES: Sparkle[] = [
  
 export default function BestProducts() {
   const [activeItem, setActiveItem] = useState<Product | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+
+  useEffect(() => {
+    contentApi.getReels().then((reels) => {
+      if (reels.length) {
+        setProducts(reels.map((r) => ({
+          id: r.id,
+          username: r.username ?? "@user",
+          caption: r.caption ?? "",
+          video: r.videoUrl,
+        })));
+      }
+    }).catch(() => {});
+  }, []);
 
   return (
     <div  

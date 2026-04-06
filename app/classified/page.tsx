@@ -1,14 +1,10 @@
-// app/shop/page.tsx
 "use client";
 
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
+import Header from "@/components/layout/Header";
+import Footer from "@/components/layout/Footer";
 import Classified from "@/app/classified/classified";
-import { useRouter } from "next/navigation";
 
-export default function ShopRoute() {
-  const router = useRouter();
-
+export default function ClassifiedRoute() {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />

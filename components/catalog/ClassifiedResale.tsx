@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
+import { contentApi } from "@/lib/api/content";
 
 type Listing = {
   id: number;
@@ -11,7 +12,7 @@ type Listing = {
   image: string;
 };
 
-const listings: Listing[] = [
+const FALLBACK_LISTINGS: Listing[] = [
   {
     id: 1,
     title: "Royal Enfield Classic 350",
@@ -242,6 +243,22 @@ function ListingCard({ item }: { item: Listing }) {
 export default function ClassifiedsSection() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeDot, setActiveDot] = useState(0);
+  const [listings, setListings] = useState<Listing[]>([]);
+
+  useEffect(() => {
+    contentApi.getClassified().then((items) => {
+      if (items.length) {
+        setListings(items.map((c) => ({
+          id: c.id,
+          title: c.title,
+          subtitle: c.subtitle ?? "",
+          price: `₹${c.price.toLocaleString("en-IN")}`,
+          location: c.location ?? "",
+          image: c.image ?? "",
+        })));
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const el = scrollRef.current;

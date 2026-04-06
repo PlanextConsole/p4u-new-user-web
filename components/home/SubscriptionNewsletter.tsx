@@ -2,17 +2,28 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import bg from "../images/bg-img/sign up.png";
-import newsletterRighht from "../images/bg-img/newsletter-right.png";
+import bg from "../../images/bg-img/sign up.png";
+import newsletterRighht from "../../images/bg-img/newsletter-right.png";
 
 export default function SubscriptionNewsletter() {
   const [email, setEmail] = useState("");
 
-  const handleSubmit = () => {
-    if (email) {
-      console.log("Subscribing:", email);
-      // Add your subscription logic here
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const handleSubmit = async () => {
+    if (!email) return;
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const { contentApi } = await import("@/lib/api/content");
+      await contentApi.subscribeNewsletter(email);
+      setMessage("Subscribed successfully!");
       setEmail("");
+    } catch {
+      setMessage("Subscription failed. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -49,10 +60,16 @@ export default function SubscriptionNewsletter() {
                 />
                 <button
                   onClick={handleSubmit}
-                  className="w-full bg-black text-white py-3 md:py-3.5 rounded-2xl font-semibold hover:bg-gray-800 transition-colors text-sm md:text-base"
+                  disabled={submitting}
+                  className="w-full bg-black text-white py-3 md:py-3.5 rounded-2xl font-semibold hover:bg-gray-800 transition-colors text-sm md:text-base disabled:opacity-50"
                 >
-                  SUBSCRIBE NOW
+                  {submitting ? "SUBSCRIBING..." : "SUBSCRIBE NOW"}
                 </button>
+                {message && (
+                  <p className={`text-sm mt-2 ${message.includes("success") ? "text-green-700" : "text-red-600"}`}>
+                    {message}
+                  </p>
+                )}
               </div>
             </div> 
             <div className="relative h-48 md:h-full min-h-[250px] md:min-h-[350px] lg:min-h-[400px] order-1 md:order-2">

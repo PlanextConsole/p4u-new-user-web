@@ -2,20 +2,21 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
-import { useCart } from "@/app/cart/CartContext";
-import AuthModal from "@/components/Authmodal";
+import { useCart } from "@/providers/CartContext";
+import { useAuth } from "@/providers/AuthContext";
+import AuthModal from "@/components/auth/Authmodal";
 import {
   MapPin, Search, ShoppingCart, User, ChevronDown, Menu, X,
   Calendar, Navigation, Clock, Package, Heart, Gift, Crown,
   Store, Bell, LogOut, ChevronRight,
 } from "lucide-react";
 import Image from "next/image";
-import logo from "../images/logo.png";
-import Ind from "../images/language/Ind.png";
-import classified from "../images/home-header-icons/classified.png";
-import services from "../images/home-header-icons/services.png";
-import shop from "../images/home-header-icons/shop.png";
-import social from "../images/home-header-icons/social.png";
+import logo from "../../images/logo.png";
+import Ind from "../../images/language/Ind.png";
+import classified from "../../images/home-header-icons/classified.png";
+import services from "../../images/home-header-icons/services.png";
+import shop from "../../images/home-header-icons/shop.png";
+import social from "../../images/home-header-icons/social.png";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -29,9 +30,8 @@ export default function Header({ onCartOpen }: HeaderProps) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isLoginDropdownOpen, setIsLoginDropdownOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [loggedPhone, setLoggedPhone] = useState("");
   const [locationSearch, setLocationSearch] = useState("");
+  const { isLoggedIn, loggedPhone, login, logout: authLogout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
 
   const searchRef = useRef<HTMLDivElement>(null);
@@ -110,33 +110,14 @@ export default function Header({ onCartOpen }: HeaderProps) {
     }
   }
 
-  useEffect(() => {
-  const logged = sessionStorage.getItem("isLoggedIn");
-  const phone = sessionStorage.getItem("phone");
-
-  if (logged === "true" && phone) {
-    setIsLoggedIn(true);
-    setLoggedPhone(phone);
-  }
-}, []);
 function handleAuthSuccess(phone: string) {
-  setIsLoggedIn(true);
-  setLoggedPhone(phone);
+  login(phone);
   setIsAuthOpen(false);
-
-  sessionStorage.setItem("isLoggedIn", "true");
-  sessionStorage.setItem("phone", phone);
-
   router.push("/profile");
 }
 function handleLogout() {
-  setIsLoggedIn(false);
-  setLoggedPhone("");
+  authLogout();
   setIsLoginDropdownOpen(false);
-
-  sessionStorage.removeItem("isLoggedIn");
-  sessionStorage.removeItem("phone");
-
   router.push("/");
 }
 

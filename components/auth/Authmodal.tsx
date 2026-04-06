@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { X } from "lucide-react";
 import Image from "next/image";
-import authIllustration from "../images/auth/login.png"; 
+import authIllustration from "../../images/auth/login.png"; 
 type Step = "login" | "otp" | "success";
 
 interface AuthModalProps {
@@ -61,20 +61,45 @@ function BrandIcon() {
   );
 }
 
-function LoginStep({ onSendOtp }: { onSendOtp: (phone: string) => void }) {
-  const [phone,   setPhone]   = useState("");
-  const [error,   setError]   = useState("");
-  const [loading, setLoading] = useState(false);
+function LoginStep({ onSendOtp, onPasswordLogin }: { onSendOtp: (phone: string) => void; onPasswordLogin: (username: string, password: string) => Promise<void> }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error,    setError]    = useState("");
+  const [loading,  setLoading]  = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const submitLock = useRef(false);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  function submit() {
-    const err = validatePhone(phone);
-    if (err) { setError(err); return; }
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setInterval(() => setCooldown(c => c - 1), 1000);
+    return () => clearInterval(id);
+  }, [cooldown]);
+
+  async function submit() {
+    if (submitLock.current || cooldown > 0) return;
+    if (!username.trim()) { setError("Username is required."); return; }
+    if (!password.trim()) { setError("Password is required."); return; }
     setError("");
+    submitLock.current = true;
     setLoading(true);
-    setTimeout(() => { setLoading(false); onSendOtp(phone.replace(/\D/g, "")); }, 900);
+    try {
+      await onPasswordLogin(username.trim(), password);
+    } catch (e: any) {
+      if (e?.status === 429) {
+        const waitSec = 30;
+        setCooldown(waitSec);
+        setError(`Too many attempts. Please wait ${waitSec}s before trying again.`);
+      } else {
+        setError(e?.message || "Login failed. Check your credentials.");
+      }
+    } finally {
+      submitLock.current = false;
+      setLoading(false);
+    }
   }
 
   const SOCIALS = [
@@ -110,47 +135,39 @@ function LoginStep({ onSendOtp }: { onSendOtp: (phone: string) => void }) {
   return (
     <>
       <h2 style={{ fontSize: 18, fontWeight: 600, color: "#111827", textAlign: "center", margin: "0 0 20px" }}>
-        Log in or Sign up
+        Log in
       </h2>
 
-      <div style={{
-        display: "flex", alignItems: "center",
-        border: `1.5px solid ${error ? "#ef4444" : "#e5e7eb"}`,
-        borderRadius: 8, overflow: "hidden", background: "white",
-        transition: "border-color 0.15s",
-      }}>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 4,
-          padding: "9px 8px 9px 10px",
-          borderRight: "1.5px solid #e5e7eb",
-          background: "#fafafa", flexShrink: 0, cursor: "pointer",
-        }}>
-          <span style={{ fontSize: 15, lineHeight: 1 }}>🇮🇳</span>
-          <svg width="8" height="5" viewBox="0 0 8 5" fill="none">
-            <path d="M1 1l3 3 3-3" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-          <span style={{ fontSize: 12,   color: "#374151", marginLeft: 2 }}>+91</span>
-        </div>
-        <input
-          ref={inputRef}
-          type="tel"
-          inputMode="numeric"
-          placeholder="Enter Mobile Number"
-          value={phone}
-          maxLength={10}
-          onChange={e => {
-            const v = e.target.value.replace(/\D/g, "").slice(0, 10);
-            setPhone(v);
-            if (error) setError(validatePhone(v));
-          }}
-          onKeyDown={e => e.key === "Enter" && submit()}
-          style={{
-            flex: 1, border: "none", outline: "none",
-            padding: "9px 10px", fontSize: 12.5,
-            color: "#111827", background: "transparent", fontFamily: "inherit",
-          }}
-        />
-      </div>
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Username"
+        value={username}
+        onChange={e => { setUsername(e.target.value); if (error) setError(""); }}
+        onKeyDown={e => e.key === "Enter" && submit()}
+        style={{
+          width: "100%", padding: "10px 12px",
+          borderRadius: 8, border: `1.5px solid ${error && !username ? "#ef4444" : "#e5e7eb"}`,
+          fontSize: 12.5, color: "#111827", background: "white",
+          outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+          transition: "border-color 0.15s",
+        }}
+      />
+      <input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={e => { setPassword(e.target.value); if (error) setError(""); }}
+        onKeyDown={e => e.key === "Enter" && submit()}
+        style={{
+          marginTop: 10, width: "100%", padding: "10px 12px",
+          borderRadius: 8, border: `1.5px solid ${error && !password ? "#ef4444" : "#e5e7eb"}`,
+          fontSize: 12.5, color: "#111827", background: "white",
+          outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+          transition: "border-color 0.15s",
+        }}
+      />
+
       {error && (
         <p style={{ fontSize: 10.5, color: "#ef4444", marginTop: 4, display: "flex", alignItems: "center", gap: 3 }}>
           <svg width="10" height="10" viewBox="0 0 16 16" fill="#ef4444">
@@ -161,21 +178,21 @@ function LoginStep({ onSendOtp }: { onSendOtp: (phone: string) => void }) {
       )}
       <button
         onClick={submit}
-        disabled={loading}
+        disabled={loading || cooldown > 0}
         style={{
           marginTop: 13, width: "100%", padding: "11px 0",
           borderRadius: 8, border: "none",
-          background: loading ? "#9ca3af" : TEAL,
+          background: (loading || cooldown > 0) ? "#9ca3af" : TEAL,
           color: "white", fontSize: 15,  letterSpacing: "0.01em",
-          cursor: loading ? "not-allowed" : "pointer",
+          cursor: (loading || cooldown > 0) ? "not-allowed" : "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
           fontFamily: "inherit", transition: "background 0.15s",
-          boxShadow: loading ? "none" : `0 3px 14px rgba(13,148,136,0.35)`,
+          boxShadow: (loading || cooldown > 0) ? "none" : `0 3px 14px rgba(13,148,136,0.35)`,
         }}
-        onMouseEnter={e => { if (!loading) e.currentTarget.style.background = TEAL_DARK; }}
-        onMouseLeave={e => { if (!loading) e.currentTarget.style.background = TEAL; }}
+        onMouseEnter={e => { if (!loading && cooldown <= 0) e.currentTarget.style.background = TEAL_DARK; }}
+        onMouseLeave={e => { if (!loading && cooldown <= 0) e.currentTarget.style.background = TEAL; }}
       >
-        {loading ? <><Spinner /> Sending…</> : "Send OTP  →"}
+        {loading ? <><Spinner /> Logging in…</> : cooldown > 0 ? `Retry in ${cooldown}s` : "Log in  →"}
       </button>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "15px 0" }}>
@@ -420,8 +437,37 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const [step,  setStep]  = useState<Step>("login");
   const [phone, setPhone] = useState("");
 
+  const customerIdFromJwt = useCallback((accessToken: string): string | null => {
+    try {
+      const parts = accessToken.split(".");
+      if (parts.length < 2) return null;
+      const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      const json = atob(base64);
+      const payload = JSON.parse(json) as { customer_id?: string | number; customerId?: string | number };
+      const id = payload.customer_id ?? payload.customerId;
+      return id != null ? String(id) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const reset = useCallback(() => { setStep("login"); setPhone(""); }, []);
   const close = useCallback(() => { onClose(); setTimeout(reset, 260); }, [onClose, reset]);
+
+  const handlePasswordLogin = useCallback(async (username: string, pwd: string) => {
+    const { authApi } = await import("@/lib/api/auth");
+    const res = await authApi.login(username, pwd);
+    localStorage.setItem("p4u_token", res.accessToken);
+    localStorage.setItem("p4u_refresh_token", res.refreshToken);
+    localStorage.setItem("p4u_token_expires_in", String(res.expiresIn));
+    localStorage.setItem("p4u_loggedIn", "true");
+    localStorage.setItem("p4u_phone", username);
+    const customerId = res.customerId ? String(res.customerId) : customerIdFromJwt(res.accessToken);
+    if (customerId) localStorage.setItem("p4u_customer_id", customerId);
+    setPhone(username);
+    setStep("success");
+    onSuccess?.(username);
+  }, [customerIdFromJwt, onSuccess]);
 
   if (!isOpen) return null;
 
@@ -521,7 +567,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 <X size={17} />
               </button>
             </div> 
-            {step === "login"   && <LoginStep onSendOtp={ph => { setPhone(ph); setStep("otp"); }} />}
+            {step === "login"   && <LoginStep onSendOtp={ph => { setPhone(ph); setStep("otp"); }} onPasswordLogin={handlePasswordLogin} />}
             {step === "otp"     && <OtpStep phone={phone} onVerify={() => { setStep("success"); onSuccess?.(phone); }} onBack={() => setStep("login")} />}
             {step === "success" && <SuccessStep onClose={close} />}
           </div>

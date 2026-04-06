@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { contentApi } from "@/lib/api/content";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const TEAL = "#0d9488";
@@ -7,20 +8,6 @@ const AMBER = "#f59e0b";
 const PURPLE = "#6d28d9";
 const RED = "#ef4444";
 const BLUE = "#3b82f6";
-
-const CLASSIFIED_CATS = [
-  "Mobile", "Electronics", "Real Estate", "Vehicles", "Services",
-  "Jobs", "Home Appliances", "Fashion", "Pets", "Health & Beauty",
-  "Sports", "Kids & Babies", "Agriculture", "Education", "Others",
-];
-
-const ALL_ADS = Array.from({ length: 36 }, (_, i) => ({
-  id: i + 1,
-  title: `#Product${i + 1}`,
-  category: CLASSIFIED_CATS[i % CLASSIFIED_CATS.length],
-  price: `$${(Math.random() * 500 + 50).toFixed(0)}`,
-  location: ["Chennai", "Mumbai", "Delhi", "Bangalore", "Kolkata"][i % 5],
-}));
 
 const ADS_PER_PAGE = 12;
 
@@ -151,7 +138,7 @@ function NavBar({ onPostAd }) {
   );
 }
 
-function HeroSearch({ onSearch }) {
+function HeroSearch({ onSearch, categories = [] }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
 
@@ -180,7 +167,7 @@ function HeroSearch({ onSearch }) {
             onChange={e => setCategory(e.target.value)}
           >
             <option value="">Select Category</option>
-            {CLASSIFIED_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <button className="search-btn" style={s.searchBtn} onClick={() => onSearch(query, category)}
@@ -192,7 +179,7 @@ function HeroSearch({ onSearch }) {
   );
 }
 
-function Sidebar({ activeCat, onSelectCat, onPromo }) {
+function Sidebar({ activeCat, onSelectCat, onPromo, categories = [] }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -221,7 +208,7 @@ function Sidebar({ activeCat, onSelectCat, onPromo }) {
           </div>
           {!collapsed && (
             <div>
-              {[{ label: "All Categories", value: "" }, ...CLASSIFIED_CATS].map((cat, idx, arr) => {
+              {[{ label: "All Categories", value: "" }, ...categories].map((cat, idx, arr) => {
                 const value = cat.value !== undefined ? cat.value : cat;
                 const label = cat.label !== undefined ? cat.label : cat;
                 const isActive = activeCat === value;
@@ -389,6 +376,7 @@ function Toast({ msg, visible }) {
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 export default function ClassifiedPage() {
+  const [ads, setAds]                 = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCat, setActiveCat]     = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -396,8 +384,25 @@ export default function ClassifiedPage() {
   const [savedAds, setSavedAds]       = useState([]);
   const [toast, showToast]            = useToast();
 
+  const categories = useMemo(
+    () => [...new Set(ads.map((a) => a.category))].sort(),
+    [ads]
+  );
+
+  useEffect(() => {
+    contentApi.getClassified().then((items) => {
+      setAds(items.map((c) => ({
+        id: c.id,
+        title: c.title,
+        category: c.subtitle ?? "Others",
+        price: `₹${c.price.toLocaleString("en-IN")}`,
+        location: c.location ?? "",
+      })));
+    }).catch(() => { /* API unavailable – ads stays empty */ });
+  }, []);
+
   // Filter logic
-  const filteredAds = ALL_ADS.filter(ad => {
+  const filteredAds = ads.filter(ad => {
     const q = searchQuery.toLowerCase();
     const matchQ = !q || ad.title.toLowerCase().includes(q) || ad.category.toLowerCase().includes(q) || ad.location.toLowerCase().includes(q);
     const matchCat = !activeCat || ad.category === activeCat;
@@ -486,10 +491,10 @@ export default function ClassifiedPage() {
       `}</style>
 
       {/* <NavBar onPostAd={handlePostAd} /> */}
-      <HeroSearch onSearch={handleSearch} />
+      <HeroSearch onSearch={handleSearch} categories={categories} />
 
       <div className="layout-main" style={s.main}>
-        <Sidebar activeCat={activeCat} onSelectCat={handleSelectCat} onPromo={handlePromo} />
+        <Sidebar activeCat={activeCat} onSelectCat={handleSelectCat} onPromo={handlePromo} categories={categories} />
 
         {/* Ad Content */}
         <div style={s.adContent}>

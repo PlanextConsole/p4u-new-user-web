@@ -1,8 +1,8 @@
 // app/shop/page.tsx
 "use client";
 
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
+import Header from "@/components/layout/Header";
+import Footer from "@/components/layout/Footer";
 import ShopPage from "@/app/shop/shop";
 import { useRouter } from "next/navigation";
 

@@ -1,22 +1,32 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import Image from "next/image"; 
-import iphone from "../images/brand-section/iphone-card.png";
-import realme from "../images/brand-section/realme-card.png";
-import xiaomi from "../images/brand-section/xiaomi-card.png";
+import Image from "next/image";
+import { contentApi } from "@/lib/api/content";
+import iphone from "../../images/brand-section/iphone-card.png";
+import realme from "../../images/brand-section/realme-card.png";
+import xiaomi from "../../images/brand-section/xiaomi-card.png";
 
-const originalBrands = [
-  { image: iphone, alt: "iPhone" },
-  { image: realme, alt: "Realme Phone" },
-  { image: xiaomi, alt: "Xiaomi Phone" },
-];
+type BrandEntry = { image: any; alt: string };
 
 export default function BrandSections() {
-  const [currentSlide, setCurrentSlide] = useState(originalBrands.length);
+  const [originalBrands, setOriginalBrands] = useState<BrandEntry[]>([]);
+  const [currentSlide, setCurrentSlide] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const autoScrollTimer = useRef<NodeJS.Timeout | null>(null); 
+  const autoScrollTimer = useRef<NodeJS.Timeout | null>(null);
   const brands = [...originalBrands, ...originalBrands, ...originalBrands];
+
+  useEffect(() => {
+    contentApi.getBrands().then((items) => {
+      if (items.length) {
+        setOriginalBrands(items.map((b) => ({
+          image: b.imageUrl,
+          alt: b.name,
+        })));
+        setCurrentSlide(items.length);
+      }
+    }).catch(() => {});
+  }, []);
  
   useEffect(() => {
     const startAutoScroll = () => {
@@ -122,6 +132,8 @@ export default function BrandSections() {
   const getActiveDot = () => {
     return currentSlide % originalBrands.length;
   };
+
+  if (originalBrands.length === 0) return null;
 
   return (
     <div className="mx-auto max-w-7xl px-3 sm:px-4 md:px-6 mt-2 sm:mt-3 md:mt-4"> 

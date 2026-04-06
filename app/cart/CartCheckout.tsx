@@ -3,9 +3,11 @@
 import { useState, useMemo, useRef, useCallback } from "react";
 import {
   ChevronLeft, ChevronRight, ShoppingBag, Trash2, Bookmark,
-  Shield, Check, Eye,
+  Shield, Check, Eye, Loader2,
 } from "lucide-react";
-import { useCart } from "@/app/cart/CartContext";
+import { useCart } from "@/providers/CartContext";
+import { commerceApi } from "@/lib/api/commerce";
+import { paymentsApi } from "@/lib/api/payments";
  
 const PRIMARY_MID  = "#1a4a3a";
 const TEAL_ACCENT  = "#0d9488";
@@ -130,8 +132,10 @@ export default function CartCheckout({
   address?: string;
 }) {
   const pageRef = useRef<HTMLDivElement>(null);
-  const { items: cartItems, removeFromCart, updateQty } = useCart(); 
+  const { items: cartItems, removeFromCart, updateQty, clearCart } = useCart();
   const [step, setStep]               = useState<number>(0);
+  const [placing, setPlacing]         = useState<boolean>(false);
+  const [orderError, setOrderError]   = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date(2026, 10, 11));
   const [weekBase, setWeekBase]       = useState<Date>(new Date(2026, 10, 7));
   const [selectedTime, setSelectedTime] = useState<string>("morning");
@@ -169,6 +173,56 @@ export default function CartCheckout({
     pageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
+
+  async function placeOrder() {
+    setPlacing(true);
+    setOrderError(null);
+    try {
+      const order = await commerceApi.createOrderFromCart();
+
+      // For COD, skip payment processing — order is already created
+      if (payMethod !== "cod") {
+        const intent = await paymentsApi.createIntent({
+          orderId: order.id,
+          amount: total,
+        });
+
+        // Poll for payment status
+        let attempts = 0;
+        const maxAttempts = 10;
+        const pollPayment = async (): Promise<boolean> => {
+          attempts++;
+          try {
+            const status = await paymentsApi.getIntent(intent.id);
+            if (status.status === "succeeded" || status.status === "completed") return true;
+            if (status.status === "failed" || status.status === "cancelled") return false;
+          } catch {
+            // continue polling
+          }
+          if (attempts < maxAttempts) {
+            await new Promise((r) => setTimeout(r, 2000));
+            return pollPayment();
+          }
+          return true;
+        };
+
+        const paid = await pollPayment();
+        if (!paid) {
+          setOrderError("Payment was not completed. Please try again.");
+          setPlacing(false);
+          return;
+        }
+      }
+
+      clearCart();
+      setStep(2);
+      scrollToTop();
+    } catch {
+      setOrderError("Failed to place order. Please try again.");
+    } finally {
+      setPlacing(false);
+    }
+  }
 
   function goToStep(n: number) {
     setStep(n);
@@ -525,8 +579,11 @@ export default function CartCheckout({
               </p>
             </div>
 
-            <PrimaryBtn onClick={() => goToStep(2)} style={{ width: "100%", marginTop: 14, padding: "12px 0", fontSize: 13, display: "block" }}>
-              Pay {formatPrice(total)}
+            {orderError && (
+              <p style={{ color: "#dc2626", fontSize: 12, marginTop: 10 }}>{orderError}</p>
+            )}
+            <PrimaryBtn onClick={placeOrder} disabled={placing} style={{ width: "100%", marginTop: 14, padding: "12px 0", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              {placing ? <><Loader2 size={16} className="animate-spin" /> Placing Order...</> : <>Pay {formatPrice(total)}</>}
             </PrimaryBtn>
           </div>
         </div>
@@ -591,9 +648,11 @@ export default function CartCheckout({
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#e5e7eb"; (e.currentTarget as HTMLElement).style.color = "#374151"; }}>
               <ShoppingBag size={14} /> Back to Home
             </button>
-            <PrimaryBtn style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", fontSize: 13 }}>
-              <Eye size={14} /> View Order
-            </PrimaryBtn>
+            <a href="/orders" style={{ textDecoration: "none" }}>
+              <PrimaryBtn style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", fontSize: 13 }}>
+                <Eye size={14} /> View Order
+              </PrimaryBtn>
+            </a>
           </div>
         </div>
       </div>

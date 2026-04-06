@@ -1,0 +1,283 @@
+import { apiClient, PaginatedResponse } from "./client";
+
+const BASE = "/api/v1/commerce";
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+
+export interface CartItemApi {
+  id: number;
+  productId: number;
+  productName?: string;
+  productImage?: string;
+  price: number;
+  quantity: number;
+  vendorId?: number;
+}
+
+export interface Cart {
+  id: number;
+  items: CartItemApi[];
+  totalAmount: number;
+}
+
+export interface Order {
+  id: string;
+  status: string;
+  totalAmount: number;
+  items: OrderItem[];
+  createdAt: string;
+}
+
+export interface OrderItem {
+  id: number;
+  productId: number;
+  productName?: string;
+  quantity: number;
+  price: number;
+}
+
+/** Matches commerce-management-service POST /checkout/quote response */
+export interface CheckoutQuote {
+  itemTotal: number;
+  platformFee: number;
+  discount: number;
+  total: number;
+  currency?: string;
+}
+
+export interface CouponValidation {
+  valid: boolean;
+  discount?: number;
+  message?: string;
+  couponId?: string;
+}
+
+/** Normalized for UI; backend uses bookingDate / timeSlot and uuid id */
+export interface Booking {
+  id: string;
+  vendorId: string;
+  serviceId?: string | null;
+  bookingDate: string;
+  timeSlot: string;
+  status: string;
+  createdAt: string;
+  /** Aliases for simple screens */
+  date: string;
+  slot: string;
+}
+
+export interface AvailableSlot {
+  label: string;
+  value: string;
+  available: boolean;
+}
+
+export interface Review {
+  id: string | number;
+  targetType: string;
+  targetId: string | number;
+  rating: number;
+  comment?: string;
+  userId: number;
+  createdAt: string;
+}
+
+export interface ReviewSummary {
+  averageRating: number;
+  totalReviews: number;
+  breakdown: Record<number, number>;
+}
+
+function normalizeBooking(row: Record<string, unknown>): Booking {
+  const bookingDate = String(row.bookingDate ?? row.booking_date ?? "");
+  const timeSlot = String(row.timeSlot ?? row.time_slot ?? "");
+  const id = String(row.id ?? "");
+  return {
+    id,
+    vendorId: String(row.vendorId ?? row.vendor_id ?? ""),
+    serviceId: (row.serviceId ?? row.service_id) as string | null | undefined,
+    bookingDate,
+    timeSlot,
+    status: String(row.status ?? ""),
+    createdAt: String(row.createdAt ?? row.created_at ?? ""),
+    date: bookingDate,
+    slot: timeSlot,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  API functions                                                      */
+/* ------------------------------------------------------------------ */
+
+export const commerceApi = {
+  health() {
+    return apiClient.get<{ status: string }>(`${BASE}/public/health`);
+  },
+
+  // Cart
+  getCart() {
+    return apiClient.get<Cart>(`${BASE}/cart`);
+  },
+
+  updateCart(items: { productId: number; quantity: number }[]) {
+    return apiClient.put<Cart>(`${BASE}/cart`, { items });
+  },
+
+  addCartItem(productId: number, quantity = 1, unitPrice?: number) {
+    return apiClient.post<Cart>(`${BASE}/cart/items`, { productId, quantity, ...(unitPrice != null ? { unitPrice } : {}) });
+  },
+
+  updateCartItem(itemId: number, quantity: number) {
+    return apiClient.patch<Cart>(`${BASE}/cart/items/${itemId}`, { quantity });
+  },
+
+  removeCartItem(itemId: number) {
+    return apiClient.delete<Cart>(`${BASE}/cart/items/${itemId}`);
+  },
+
+  clearCart() {
+    return apiClient.delete<void>(`${BASE}/cart`);
+  },
+
+  mergeCart(items: { productId: number; quantity: number; unitPrice?: number }[]) {
+    return apiClient.post<Cart>(`${BASE}/cart/merge`, { items });
+  },
+
+  // Orders
+  createOrderFromCart() {
+    return apiClient.post<Order>(`${BASE}/orders/from-cart`);
+  },
+
+  createOrder(data: { items: { productId: number; quantity: number; price: number }[]; addressId?: number }) {
+    return apiClient.post<Order>(`${BASE}/orders`, data);
+  },
+
+  getOrders(customerId: string | number, params?: { limit?: number; offset?: number }) {
+    return apiClient.get<PaginatedResponse<Order>>(`${BASE}/customers/${customerId}/orders`, params as Record<string, string | number | boolean>);
+  },
+
+  getOrder(orderId: string | number) {
+    return apiClient.get<Order>(`${BASE}/orders/${orderId}`);
+  },
+
+  cancelOrder(orderId: string | number) {
+    return apiClient.post<Order>(`${BASE}/orders/${orderId}/cancel`);
+  },
+
+  // Checkout — backend expects itemTotal, platformFee, discount (see commerce.routes.ts)
+  getCheckoutQuote(data: { itemTotal: number; platformFee?: number; discount?: number }) {
+    const itemTotal = data.itemTotal;
+    const platformFee = data.platformFee ?? 0;
+    const discount = data.discount ?? 0;
+    return apiClient.post<CheckoutQuote>(`${BASE}/checkout/quote`, {
+      itemTotal,
+      platformFee,
+      discount,
+    });
+  },
+
+  validateCoupon(code: string, cartTotal: number, vendorId?: string) {
+    return apiClient.post<CouponValidation>(`${BASE}/coupons/validate`, {
+      code,
+      cartTotal,
+      ...(vendorId !== undefined ? { vendorId } : {}),
+    });
+  },
+
+  // Bookings — backend expects bookingDate, timeSlot
+  createBooking(data: {
+    vendorId: string | number;
+    serviceId?: string | number | null;
+    date: string;
+    slot: string;
+    addressId?: string | null;
+    notes?: string | null;
+    totalAmount?: string;
+  }) {
+    return apiClient
+      .post<Record<string, unknown>>(`${BASE}/bookings`, {
+        vendorId: data.vendorId,
+        serviceId: data.serviceId ?? null,
+        bookingDate: data.date,
+        timeSlot: data.slot,
+        addressId: data.addressId ?? null,
+        notes: data.notes ?? null,
+        totalAmount: data.totalAmount ?? "0",
+      })
+      .then((row) => normalizeBooking(row as Record<string, unknown>));
+  },
+
+  getBookings(params?: { limit?: number; offset?: number }) {
+    return apiClient
+      .get<{ items?: Record<string, unknown>[]; total?: number; limit?: number; offset?: number }>(
+        `${BASE}/bookings`,
+        params as Record<string, string | number | boolean>,
+      )
+      .then((payload) => {
+        const items = (payload.items ?? []).map((row) => normalizeBooking(row));
+        return {
+          data: items,
+          total: payload.total ?? items.length,
+          limit: payload.limit ?? 20,
+          offset: payload.offset ?? 0,
+        } satisfies PaginatedResponse<Booking>;
+      });
+  },
+
+  getBooking(bookingId: string | number) {
+    return apiClient.get<Record<string, unknown>>(`${BASE}/bookings/${bookingId}`).then((row) => normalizeBooking(row));
+  },
+
+  cancelBooking(bookingId: string | number) {
+    return apiClient.post<Record<string, unknown>>(`${BASE}/bookings/${bookingId}/cancel`).then((row) => normalizeBooking(row));
+  },
+
+  getAvailableSlots(vendorId: string | number, date: string) {
+    return apiClient
+      .get<{
+        vendorId?: string;
+        date?: string;
+        slots?: AvailableSlot[];
+      }>(`${BASE}/bookings/available-slots`, { vendorId, date })
+      .then((body) => body.slots ?? []);
+  },
+
+  // Reviews
+  createReview(data: { targetType: string; targetId: string | number; rating: number; comment?: string }) {
+    return apiClient.post<Review>(`${BASE}/reviews`, {
+      targetType: data.targetType,
+      targetId: data.targetId,
+      rating: data.rating,
+      reviewText: data.comment,
+    });
+  },
+
+  getReviews(targetType: string, targetId: string | number) {
+    return apiClient
+      .get<
+        | { items?: Array<Review & { reviewText?: string | null }>; data?: Array<Review & { reviewText?: string | null }> }
+        | Array<Review & { reviewText?: string | null }>
+      >(`${BASE}/reviews`, { targetType, targetId })
+      .then((payload) => {
+        const rows = Array.isArray(payload)
+          ? payload
+          : (payload.items ?? payload.data ?? []);
+        return rows.map((row) => ({
+          ...row,
+          comment: row.comment ?? row.reviewText ?? undefined,
+        }));
+      });
+  },
+
+  getReviewSummary(targetType: string, targetId: string | number) {
+    return apiClient
+      .get<{ average?: number; count?: number }>(`${BASE}/reviews/summary`, { targetType, targetId })
+      .then((raw) => ({
+        averageRating: raw.average ?? 0,
+        totalReviews: raw.count ?? 0,
+        breakdown: {} as Record<number, number>,
+      }));
+  },
+};

@@ -1,14 +1,16 @@
 
 "use client";
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useCart } from "@/app/cart/CartContext";
+import { useCart } from "@/providers/CartContext";
 import {
   Star, MapPin, ChevronLeft, ChevronRight, Search,
   Heart, Filter, Zap, Phone, Mail,
   CheckCircle, Plus, Minus, Tag, X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { TEAL_GRADIENT, VENDORS } from "./constants";
+import { TEAL_GRADIENT } from "./constants";
+import { catalogApi } from "@/lib/api/catalog";
+import { Loader2 } from "lucide-react";
 
 const TEAL_SOLID = "#0d9488";
  
@@ -38,6 +40,23 @@ type Product = {
   category?: string;
 };
 type Banner = { gradient: string; accent: string; title: string; subtitle: string };
+
+const DEFAULT_BANNER: Banner = {
+  gradient: TEAL_GRADIENT,
+  accent: TEAL_SOLID,
+  title: "Shop trusted products",
+  subtitle: "Fast delivery · Quality picks",
+};
+
+function normalizeBanner(raw: Partial<Banner> | undefined): Banner {
+  if (!raw) return DEFAULT_BANNER;
+  return {
+    gradient: raw.gradient ?? DEFAULT_BANNER.gradient,
+    accent: raw.accent ?? DEFAULT_BANNER.accent,
+    title: raw.title ?? DEFAULT_BANNER.title,
+    subtitle: raw.subtitle ?? DEFAULT_BANNER.subtitle,
+  };
+}
 type Vendor = {
   name: string; logo: string; logoColor?: string; verified?: boolean;
   since: string; category: string; subCategory: string; delivery: string;
@@ -77,32 +96,38 @@ function ProductImage({ product, vendorCategory }: { product: Product; vendorCat
 }
  
 function VendorBanner({ banners, vendorName }: { banners: Banner[]; vendorName: string }) {
+  const slides =
+    banners.length > 0
+      ? banners.map((x) => normalizeBanner(x))
+      : [normalizeBanner({ ...DEFAULT_BANNER, title: vendorName || DEFAULT_BANNER.title })];
   const [current, setCurrent] = useState(0);
   const [animating, setAnimating] = useState(false);
   const [dir, setDir] = useState<"next" | "prev">("next");
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const go = (direction: "next" | "prev") => {
-    if (animating) return;
+    if (animating || slides.length === 0) return;
     setDir(direction);
     setAnimating(true);
+    const len = slides.length;
     setTimeout(() => {
       setCurrent((prev) =>
         direction === "next"
-          ? (prev + 1) % banners.length
-          : (prev - 1 + banners.length) % banners.length
+          ? (prev + 1) % len
+          : (prev - 1 + len) % len
       );
       setAnimating(false);
     }, 350);
   };
 
   useEffect(() => {
-    if (banners.length <= 1) return undefined;
+    if (slides.length <= 1) return undefined;
     timerRef.current = setInterval(() => go("next"), 5000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [current, animating]);
+  }, [current, animating, slides.length]);
 
-  const b = banners[current] ?? banners[0];
+  const safeIndex = slides.length ? Math.min(current, slides.length - 1) : 0;
+  const b = normalizeBanner(slides[safeIndex]);
 
   return (
     <div className="relative w-full overflow-hidden rounded-xl sm:rounded-2xl" style={{ height: "clamp(120px, 22vw, 400px)" }}>
@@ -140,7 +165,7 @@ function VendorBanner({ banners, vendorName }: { banners: Banner[]; vendorName: 
           </div>
         </div>
       </div>
-      {banners.length > 1 && (
+      {slides.length > 1 && (
         <>
           <button onClick={() => go("prev")} className="absolute left-1 top-1/2 -translate-y-1/2 z-20 bg-white/20 hover:bg-white/40 backdrop-blur-sm rounded-full p-0.5 transition-all border border-white/30">
             <ChevronLeft className="w-2.5 h-2.5 text-white" />
@@ -149,7 +174,7 @@ function VendorBanner({ banners, vendorName }: { banners: Banner[]; vendorName: 
             <ChevronRight className="w-2.5 h-2.5 text-white" />
           </button>
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
-            {banners.map((_, i) => (
+            {slides.map((_, i) => (
               <button key={i} onClick={() => setCurrent(i)} className="h-1 sm:h-1.5 rounded-full transition-all duration-300" style={{
                 width: i === current ? 16 : 5,
                 background: i === current ? b.accent : "rgba(255,255,255,0.35)",
@@ -469,7 +494,55 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
   const [offersOnly, setOffersOnly] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const vendor: Vendor | null = (VENDORS as Record<string, Vendor>)[vendorId] ?? null;
+  const [vendor, setVendor] = useState<Vendor | null>(null);
+  const [loadingVendor, setLoadingVendor] = useState(true);
+
+  useEffect(() => {
+    if (!vendorId) {
+      setLoadingVendor(false);
+      return;
+    }
+    const vid = vendorId;
+    Promise.all([
+      catalogApi.getVendor(vid),
+      catalogApi.getVendorProducts(vid, { limit: 50 }),
+    ]).then(([v, productsRes]) => {
+      setVendor({
+        id: String(v.id),
+        name: (v as any).businessName || v.name,
+        logoColor: "#0d9488",
+        logo: v.logoUrl || v.logo || "🏪",
+        verified: true,
+        since: "2024",
+        category: "General",
+        subCategory: v.description ?? "",
+        rating: v.rating ?? 0,
+        reviews: 0,
+        delivery: "Delivery",
+        phone: (v as any).phone ?? "",
+        email: (v as any).email ?? "",
+        address: (v as any).address ?? "",
+        banners: (v as any).banners ?? [],
+        tabs: ["All"],
+        tabCounts: [productsRes.data.length],
+        products: productsRes.data.map((p) => ({
+          id: p.id,
+          name: p.name,
+          color: "",
+          price: p.price,
+          originalPrice: p.originalPrice ?? p.price,
+          rating: 0,
+          reviews: 0,
+          image: p.metadata?.imageUrl || p.image || "",
+          brand: p.metadata?.brand ?? "",
+          badge: null,
+          badgeColor: null,
+        })),
+      } as any);
+    }).catch(() => {
+      setVendor(null);
+    }).finally(() => setLoadingVendor(false));
+  }, [vendorId]);
 
   const toggleBrand = (brand: string) =>
     setSelectedBrands((prev) => prev.includes(brand) ? prev.filter((b) => b !== brand) : [...prev, brand]);
@@ -502,6 +575,14 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
   };
 
   const sidebarProps: SidebarProps = { brands, selectedBrands, toggleBrand, offersOnly, setOffersOnly, ratingFilter, setRatingFilter };
+
+  if (loadingVendor) {
+    return (
+      <div className="flex justify-center py-24">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+      </div>
+    );
+  }
 
   if (!vendor) {
     return (

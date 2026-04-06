@@ -1,14 +1,10 @@
-import { VENDORS } from "@/app/shop/constants";
 import ProductRoute from "./ProductRoute";
 
+export const dynamicParams = true;
+
 export function generateStaticParams() {
-  const params: { vendorId: string; productId: string }[] = [];
-  Object.entries(VENDORS as Record<string, any>).forEach(([vendorId, vendor]) => {
-    (vendor.products ?? []).forEach((p: any) => {
-      params.push({ vendorId, productId: String(p.id) });
-    });
-  });
-  return params;
+  // All product routes are resolved dynamically via API
+  return [];
 }
 
 export default function Page({ params }: { params: { vendorId: string; productId: string } }) {

@@ -1,67 +1,37 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useRef } from "react";
-import Image from "next/image"; 
-import bluetooth from "../images/best-products/bluetooth-speaker.png";
-import mobile from "../images/best-products/mobile.png";
-import moniter from "../images/best-products/moniter.png";
-import printer from "../images/best-products/printer.png";
-import watch from "../images/best-products/watch.png";
+import { useRef, useState, useEffect } from "react";
+import Image from "next/image";
+import { catalogApi } from "@/lib/api/catalog";
+import bluetooth from "../../images/best-products/bluetooth-speaker.png";
+import mobile from "../../images/best-products/mobile.png";
+import moniter from "../../images/best-products/moniter.png";
+import printer from "../../images/best-products/printer.png";
+import watch from "../../images/best-products/watch.png";
 
-const products = [
-  {
-    name: "Best Truewireless",
-    subtitle: "Grab Now",
-    price: null,
-    image: mobile,
-  },
-  {
-    name: "Best Selling Mobile S.....",
-    subtitle: null,
-    price: "₹499*",
-    image: bluetooth,
-  },
-  {
-    name: "Smart Watches",
-    subtitle: null,
-    price: "₹1,399",
-    image: watch,
-  },
-  {
-    name: "Printers",
-    subtitle: null,
-    price: "₹2,336",
-    image: printer,
-  },
-  {
-    name: "Monitor",
-    subtitle: null,
-    price: "₹9,336",
-    image: moniter,
-  },
-  {
-    name: "Monitor",
-    subtitle: null,
-    price: "₹9,336",
-    image: moniter,
-  },
-  {
-    name: "Best Truewireless",
-    subtitle: "Grab Now",
-    price: null,
-    image: mobile,
-  },
-  {
-    name: "Best Selling Mobile S.....",
-    subtitle: null,
-    price: "₹499*",
-    image: bluetooth,
-  },
-];
+interface ProductCard {
+  name: string;
+  subtitle: string | null;
+  price: string | null;
+  image: any;
+}
 
 export default function BestProducts() {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [products, setProducts] = useState<ProductCard[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    catalogApi.getVendorProducts(0, { limit: 10 }).then((res) => {
+      setProducts(res.data.map((p) => ({
+        name: p.name,
+        subtitle: null,
+        price: p.price ? `₹${p.price}` : null,
+        image: p.metadata?.imageUrl || p.image || mobile,
+      })));
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
 
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {
@@ -73,8 +43,10 @@ export default function BestProducts() {
     }
   };
 
+  if (!loading && products.length === 0) return null;
+
   return (
-    <div className=" mx-auto max-w-[1400px] px-3 sm:px-4 md:px-6 mt-2 sm:mt-3 md:mt-4">  
+    <div className=" mx-auto max-w-[1400px] px-3 sm:px-4 md:px-6 mt-2 sm:mt-3 md:mt-4">
        <div
   className="rounded-2xl sm:rounded-3xl overflow-hidden"
   style={{

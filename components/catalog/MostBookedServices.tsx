@@ -1,18 +1,20 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Heart, Clock, Star } from "lucide-react";
 import Image from "next/image";
+import { catalogApi } from "@/lib/api/catalog";
 
-import lamp from "../images/home-services/lamp.png";
-import kitchen from "../images/home-services/kitchenapplication.png";
-import homeApp from "../images/home-services/home-application-left.png";
-import flower from "../images/home-services/flower-stand.png";
-import coffee from "../images/home-services/cofeemaker.png";
-import sofa from "../images/home-services/sofa-chair.png";
-import pot from "../images/home-services/pot.png";
-import socket from "../images/home-services/socket.png";
+import lamp from "../../images/home-services/lamp.png";
+import kitchen from "../../images/home-services/kitchenapplication.png";
+import homeApp from "../../images/home-services/home-application-left.png";
+import flower from "../../images/home-services/flower-stand.png";
+import coffee from "../../images/home-services/cofeemaker.png";
+import sofa from "../../images/home-services/sofa-chair.png";
+import pot from "../../images/home-services/pot.png";
+import socket from "../../images/home-services/socket.png";
 
-const mostBookedServices = [
+const FALLBACK_SERVICES = [
   {
     id: 1,
     image: socket,
@@ -135,7 +137,7 @@ const mostBookedServices = [
   },
 ];
 
-const homeServices = [
+const FALLBACK_HOME_SERVICES = [
   { name: "Soft chairs", price: "₹1,499", image: sofa },
   { name: "Sofa & chair", price: "₹1,499", image: sofa },
   { name: "Kitchen dishes", price: "₹1,499", image: pot },
@@ -146,7 +148,37 @@ const homeServices = [
   { name: "Coffee maker", price: "₹1,499", image: flower },
 ];
 
+const HOME_IMG_MAP: Record<number, any> = { 0: sofa, 1: sofa, 2: pot, 3: lamp, 4: kitchen, 5: coffee, 6: lamp, 7: flower };
+
 export default function ServiceComponents() {
+  const [mostBookedServices, setMostBookedServices] = useState<{ id: number; image: string | typeof socket; title: string; rating: number; reviews: number; price: number; originalPrice: number; duration: string; description: string; offer: string }[]>([]);
+  const [homeServices, setHomeServices] = useState<{ name: string; price: string; image: any }[]>([]);
+
+  useEffect(() => {
+    catalogApi.getVendorProducts(0, { limit: 8, offset: 10 }).then((res) => {
+      setHomeServices(res.data.map((p, i) => ({
+        name: p.name,
+        price: p.price ? `₹${p.price.toLocaleString("en-IN")}` : "",
+        image: p.metadata?.imageUrl || p.image || sofa,
+      })));
+    }).catch(() => {});
+
+    catalogApi.getServices({ limit: 10 }).then((res) => {
+      setMostBookedServices(res.data.map((s) => ({
+        id: s.id,
+        image: s.metadata?.imageUrl || socket,
+        title: s.name,
+        rating: 0,
+        reviews: 0,
+        price: s.price,
+        originalPrice: s.metadata?.originalPrice ? Number(s.metadata.originalPrice) : s.price,
+        duration: s.duration ?? "",
+        description: s.description ?? "",
+        offer: "",
+      })));
+    }).catch(() => {});
+  }, []);
+
   return (
     <div className=" mx-auto max-w-[1400px] px-3 sm:px-4 md:px-6     ">
       <section className="my-6">

@@ -4,7 +4,7 @@
 const useGhPagesBase = process.env.NODE_ENV === 'production';
 
 const nextConfig = {
-  output: 'export',        // ✅ REQUIRED for GitHub Pages
+  // output: 'export' removed — dynamic API-driven routes require server rendering
   basePath: useGhPagesBase ? '/p4u' : '',
   assetPrefix: useGhPagesBase ? '/p4u/' : '',
   eslint: {
