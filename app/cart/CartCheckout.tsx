@@ -8,6 +8,16 @@ import {
 import { useCart } from "@/providers/CartContext";
 import { commerceApi } from "@/lib/api/commerce";
 import { paymentsApi } from "@/lib/api/payments";
+import type { ApiError } from "@/lib/api/client";
+import { useAppLoading } from "@/providers/AppLoadingProvider";
+
+function messageFromApiError(e: unknown, fallback: string): string {
+  if (typeof e === "object" && e !== null && "message" in e) {
+    const m = (e as ApiError).message;
+    if (typeof m === "string" && m.trim()) return m;
+  }
+  return fallback;
+}
  
 const PRIMARY_MID  = "#1a4a3a";
 const TEAL_ACCENT  = "#0d9488";
@@ -132,6 +142,7 @@ export default function CartCheckout({
   address?: string;
 }) {
   const pageRef = useRef<HTMLDivElement>(null);
+  const { runWithLoading } = useAppLoading();
   const { items: cartItems, removeFromCart, updateQty, clearCart } = useCart();
   const [step, setStep]               = useState<number>(0);
   const [placing, setPlacing]         = useState<boolean>(false);
@@ -178,47 +189,67 @@ export default function CartCheckout({
     setPlacing(true);
     setOrderError(null);
     try {
-      const order = await commerceApi.createOrderFromCart();
-
-      // For COD, skip payment processing — order is already created
-      if (payMethod !== "cod") {
-        const intent = await paymentsApi.createIntent({
-          orderId: order.id,
-          amount: total,
-        });
-
-        // Poll for payment status
-        let attempts = 0;
-        const maxAttempts = 10;
-        const pollPayment = async (): Promise<boolean> => {
-          attempts++;
-          try {
-            const status = await paymentsApi.getIntent(intent.id);
-            if (status.status === "succeeded" || status.status === "completed") return true;
-            if (status.status === "failed" || status.status === "cancelled") return false;
-          } catch {
-            // continue polling
-          }
-          if (attempts < maxAttempts) {
-            await new Promise((r) => setTimeout(r, 2000));
-            return pollPayment();
-          }
-          return true;
-        };
-
-        const paid = await pollPayment();
-        if (!paid) {
-          setOrderError("Payment was not completed. Please try again.");
-          setPlacing(false);
+      await runWithLoading(async () => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("p4u_token") : null;
+        if (!token) {
+          setOrderError("Please sign in to place an order.");
           return;
         }
-      }
+        // Replace server cart with current UI cart (PUT), then create order from that cart
+        if (cartItems.length > 0) {
+          await commerceApi.updateCart(
+            cartItems.map((i) => ({
+              productId: i.productId ?? i.id,
+              quantity: i.qty,
+              unitPrice: i.price,
+              vendorId: i.vendorId || null,
+            })),
+          );
+        }
 
-      clearCart();
-      setStep(2);
-      scrollToTop();
-    } catch {
-      setOrderError("Failed to place order. Please try again.");
+        const order = await commerceApi.createOrderFromCart();
+
+        // For COD, skip payment processing — order is already created
+        if (payMethod !== "cod") {
+          const intent = await paymentsApi.createIntent({
+            orderId: order.id,
+            amount: total,
+          });
+
+          // Poll for payment status
+          let attempts = 0;
+          const maxAttempts = 10;
+          const pollPayment = async (): Promise<boolean> => {
+            attempts++;
+            try {
+              const status = await paymentsApi.getIntent(intent.id);
+              if (status.status === "succeeded" || status.status === "completed") return true;
+              if (status.status === "failed" || status.status === "cancelled") return false;
+            } catch {
+              // continue polling
+            }
+            if (attempts < maxAttempts) {
+              await new Promise((r) => setTimeout(r, 2000));
+              return pollPayment();
+            }
+            return true;
+          };
+
+          const paid = await pollPayment();
+          if (!paid) {
+            setOrderError("Payment was not completed. Please try again.");
+            return;
+          }
+        }
+
+        clearCart();
+        setStep(2);
+        scrollToTop();
+      });
+    } catch (e: unknown) {
+      setOrderError(
+        messageFromApiError(e, "Failed to place order. Please try again."),
+      );
     } finally {
       setPlacing(false);
     }
@@ -392,11 +423,26 @@ export default function CartCheckout({
 
     return (
       <div>
-        <div style={{ marginBottom: 16 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 600, color: "#1f2937", margin: 0 }}>Review Your Order</h1>
-          <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-            Please verify your order and payment details before completing your purchase.
-          </p>
+        <div style={{ marginBottom: 16, display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 600, color: "#1f2937", margin: 0 }}>Review Your Order</h1>
+            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+              Please verify your order and payment details before completing your purchase.
+            </p>
+          </div>
+          <button
+            onClick={() => { if (window.confirm("Remove all items from cart?")) clearCart(); }}
+            style={{
+              display: "flex", alignItems: "center", gap: 6, padding: "8px 16px",
+              fontSize: 12, fontWeight: 600, color: "#ef4444", background: "#fef2f2",
+              border: "1px solid #fecaca", borderRadius: 8, cursor: "pointer",
+              fontFamily: "inherit", transition: "all 0.15s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = "#fee2e2"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2"; }}
+          >
+            <Trash2 size={14} /> Remove Cart
+          </button>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }} className="cart-layout">
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -583,7 +629,7 @@ export default function CartCheckout({
               <p style={{ color: "#dc2626", fontSize: 12, marginTop: 10 }}>{orderError}</p>
             )}
             <PrimaryBtn onClick={placeOrder} disabled={placing} style={{ width: "100%", marginTop: 14, padding: "12px 0", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              {placing ? <><Loader2 size={16} className="animate-spin" /> Placing Order...</> : <>Pay {formatPrice(total)}</>}
+              {placing ? <><Loader2 size={16} className="animate-spin" /> Placing Order...</> : payMethod === "cod" ? <>Place Order — {formatPrice(total)}</> : <>Pay {formatPrice(total)}</>}
             </PrimaryBtn>
           </div>
         </div>

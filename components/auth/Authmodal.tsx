@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { resolveCustomerIdFromAccessToken } from "@/lib/resolveCustomerId";
 import { X } from "lucide-react";
 import Image from "next/image";
 import authIllustration from "../../images/auth/login.png"; 
@@ -437,20 +438,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   const [step,  setStep]  = useState<Step>("login");
   const [phone, setPhone] = useState("");
 
-  const customerIdFromJwt = useCallback((accessToken: string): string | null => {
-    try {
-      const parts = accessToken.split(".");
-      if (parts.length < 2) return null;
-      const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-      const json = atob(base64);
-      const payload = JSON.parse(json) as { customer_id?: string | number; customerId?: string | number };
-      const id = payload.customer_id ?? payload.customerId;
-      return id != null ? String(id) : null;
-    } catch {
-      return null;
-    }
-  }, []);
-
   const reset = useCallback(() => { setStep("login"); setPhone(""); }, []);
   const close = useCallback(() => { onClose(); setTimeout(reset, 260); }, [onClose, reset]);
 
@@ -462,12 +449,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
     localStorage.setItem("p4u_token_expires_in", String(res.expiresIn));
     localStorage.setItem("p4u_loggedIn", "true");
     localStorage.setItem("p4u_phone", username);
-    const customerId = res.customerId ? String(res.customerId) : customerIdFromJwt(res.accessToken);
+    const customerId =
+      res.customerId != null && String(res.customerId).trim() !== ""
+        ? String(res.customerId)
+        : resolveCustomerIdFromAccessToken(res.accessToken);
     if (customerId) localStorage.setItem("p4u_customer_id", customerId);
     setPhone(username);
     setStep("success");
     onSuccess?.(username);
-  }, [customerIdFromJwt, onSuccess]);
+  }, [onSuccess]);
 
   if (!isOpen) return null;
 

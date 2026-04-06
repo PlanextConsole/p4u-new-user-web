@@ -19,6 +19,8 @@ import shop from "../../images/home-header-icons/shop.png";
 import social from "../../images/home-header-icons/social.png";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { notifyNavigationIntent } from "@/lib/appLoadingBus";
+import { avatarLetterFromDisplayName } from "@/lib/resolveCustomerId";
 
 interface HeaderProps {
   onCartOpen?: () => void;
@@ -31,7 +33,7 @@ export default function Header({ onCartOpen }: HeaderProps) {
   const [isLoginDropdownOpen, setIsLoginDropdownOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [locationSearch, setLocationSearch] = useState("");
-  const { isLoggedIn, loggedPhone, login, logout: authLogout } = useAuth();
+  const { isLoggedIn, loggedPhone, displayName, login, logout: authLogout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
 
   const searchRef = useRef<HTMLDivElement>(null);
@@ -98,6 +100,7 @@ export default function Header({ onCartOpen }: HeaderProps) {
       onCartOpen();
     } else {
       sessionStorage.setItem("openCart", "1");
+      notifyNavigationIntent();
       router.push("/cart");
     }
   }
@@ -113,11 +116,13 @@ export default function Header({ onCartOpen }: HeaderProps) {
 function handleAuthSuccess(phone: string) {
   login(phone);
   setIsAuthOpen(false);
+  notifyNavigationIntent();
   router.push("/profile");
 }
 function handleLogout() {
   authLogout();
   setIsLoginDropdownOpen(false);
+  notifyNavigationIntent();
   router.push("/");
 }
 
@@ -136,12 +141,14 @@ function handleLogout() {
   }
 
   function LoginAvatar() {
+    const letter = avatarLetterFromDisplayName(displayName);
     return (
       <div
         className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
         style={{ background: "radial-gradient(at 60% 25%, #1a4a3a 0%, #0e221f 100%)" }}
+        aria-hidden
       >
-        G
+        {letter}
       </div>
     );
   }
@@ -290,7 +297,9 @@ function handleLogout() {
                 {isLoggedIn ? (
                   <>
                     <LoginAvatar />
-                    <span className="text-xs xl:text-sm text-black hidden xl:inline">Giftlee</span>
+                    <span className="text-xs xl:text-sm text-black hidden xl:inline max-w-[160px] truncate" title={displayName}>
+                      {displayName}
+                    </span>
                     <ChevronDown className="w-3 xl:w-4 h-3 xl:h-4 text-black transition-transform" strokeWidth={2} style={{ transform: isLoginDropdownOpen ? "rotate(180deg)" : "rotate(0deg)" }} />
                   </>
                 ) : (
@@ -433,7 +442,7 @@ function handleLogout() {
                 >
                   <div className="flex items-center gap-2">
                     {isLoggedIn ? (
-                      <><LoginAvatar /><span>+91 {loggedPhone.slice(0,3)}***{loggedPhone.slice(-3)}</span></>
+                      <><LoginAvatar /><span className="truncate max-w-[160px] text-left" title={displayName}>{displayName}</span></>
                     ) : (
                       <><User className="w-4 h-4 text-black" strokeWidth={2} /><span>Login / Sign Up</span></>
                     )}

@@ -14,6 +14,7 @@ import {
   ITEMS_PER_PAGE,
 } from "./constants";
 import { catalogApi } from "@/lib/api/catalog";
+import { notifyNavigationIntent } from "@/lib/appLoadingBus";
 import { Loader2 } from "lucide-react";
  
 
@@ -66,8 +67,15 @@ function ServiceCard({ service, onVendorSelect }: { service: ShopItem; onVendorS
   const router = useRouter();
   return (
     <div
+      data-loading-click
       className="bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 cursor-pointer flex flex-col border border-gray-100"
-      onClick={() => onVendorSelect ? onVendorSelect(service.vendorId) : router.push(`/shop/${service.vendorId}`)}
+      onClick={() => {
+        if (onVendorSelect) onVendorSelect(service.vendorId);
+        else {
+          notifyNavigationIntent();
+          router.push(`/shop/${service.vendorId}`);
+        }
+      }}
     >
       <CardImage item={service} />
       <div className="p-3.5 flex flex-col flex-1">

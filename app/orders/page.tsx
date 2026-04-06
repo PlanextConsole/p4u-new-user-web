@@ -7,6 +7,7 @@ import { Package, Loader2 } from "lucide-react";
 import { commerceApi, Order } from "@/lib/api/commerce";
 import AuthGuard from "@/providers/AuthGuard";
 import { useAuth } from "@/providers/AuthContext";
+import { resolveCustomerIdFromAccessToken } from "@/lib/resolveCustomerId";
 
 export default function OrdersPage() {
   const { isLoggedIn, isLoading: authLoading } = useAuth();
@@ -22,11 +23,16 @@ export default function OrdersPage() {
       return;
     }
 
-    const customerId = localStorage.getItem("p4u_customer_id") || "";
+    const token = localStorage.getItem("p4u_token");
+    const customerId =
+      localStorage.getItem("p4u_customer_id") || resolveCustomerIdFromAccessToken(token) || "";
     if (!customerId) {
       setError("Customer profile not linked. Please log out and log in again.");
       setLoading(false);
       return;
+    }
+    if (!localStorage.getItem("p4u_customer_id")) {
+      localStorage.setItem("p4u_customer_id", customerId);
     }
     commerceApi
       .getOrders(customerId, { limit: 50 })

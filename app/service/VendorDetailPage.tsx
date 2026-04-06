@@ -661,7 +661,7 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
     </div>
   );
 
-  const tabIcons = [<IC.Tag/>,<IC.Info/>,<IC.Gallery/>];
+  const tabIcons = [<IC.Tag key="tag" />, <IC.Info key="info" />, <IC.Gallery key="gallery" />];
 
   return (
     <div >

@@ -10,6 +10,7 @@ import {
 import { useRouter } from "next/navigation";
 import { TEAL_GRADIENT } from "./constants";
 import { catalogApi } from "@/lib/api/catalog";
+import { notifyNavigationIntent } from "@/lib/appLoadingBus";
 import { Loader2 } from "lucide-react";
 
 const TEAL_SOLID = "#0d9488";
@@ -341,6 +342,7 @@ function ProductCard({ product, onProductClick, vendorId, vendorName, vendorCate
 
   return (
     <div
+      data-loading-click
       className="bg-white rounded-2xl overflow-hidden flex flex-col cursor-pointer"
       style={{ boxShadow: "0 2px 16px rgba(0,0,0,0.10)", border: "1px solid #f0f0f0", transition: "box-shadow 0.2s, transform 0.2s" }}
       onClick={() => onProductClick(product)}
@@ -688,7 +690,10 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
                     vendorId={vendorId}
                     vendorName={vendor.name}
                     vendorCategory={vendor.category}
-                    onProductClick={(p) => router.push(`/shop/${vendorId}/${p.id}`)}
+                    onProductClick={(p) => {
+                      notifyNavigationIntent();
+                      router.push(`/shop/${vendorId}/${p.id}`);
+                    }}
                   />
                 ))}
               </div>

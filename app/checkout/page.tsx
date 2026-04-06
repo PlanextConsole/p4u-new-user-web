@@ -8,8 +8,19 @@ import { useCart } from "@/providers/CartContext";
 import { commerceApi, CheckoutQuote } from "@/lib/api/commerce";
 import { paymentsApi } from "@/lib/api/payments";
 import AuthGuard from "@/providers/AuthGuard";
+import type { ApiError } from "@/lib/api/client";
+import { useAppLoading } from "@/providers/AppLoadingProvider";
+
+function messageFromApiError(e: unknown, fallback: string): string {
+  if (typeof e === "object" && e !== null && "message" in e) {
+    const m = (e as ApiError).message;
+    if (typeof m === "string" && m.trim()) return m;
+  }
+  return fallback;
+}
 
 export default function CheckoutPage() {
+  const { runWithLoading } = useAppLoading();
   const { items, clearCart } = useCart();
   const [coupon, setCoupon] = useState("");
   const [couponDiscount, setCouponDiscount] = useState(0);
@@ -72,42 +83,57 @@ export default function CheckoutPage() {
     setPlacing(true);
     setError(null);
     try {
-      const order = await commerceApi.createOrderFromCart();
-      const intent = await paymentsApi.createIntent({
-        orderId: order.id,
-        amount: quote?.total ?? subtotal,
+      await runWithLoading(async () => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("p4u_token") : null;
+        if (!token) {
+          setError("Please sign in to place an order.");
+          return;
+        }
+        if (items.length > 0) {
+          await commerceApi.updateCart(
+            items.map((i) => ({
+              productId: i.productId ?? i.id,
+              quantity: i.qty,
+              unitPrice: i.price,
+              vendorId: i.vendorId || null,
+            })),
+          );
+        }
+        const order = await commerceApi.createOrderFromCart();
+        const intent = await paymentsApi.createIntent({
+          orderId: order.id,
+          amount: quote?.total ?? subtotal,
+        });
+
+        let attempts = 0;
+        const maxAttempts = 10;
+        const pollPayment = async (): Promise<boolean> => {
+          attempts++;
+          try {
+            const status = await paymentsApi.getIntent(intent.id);
+            if (status.status === "succeeded" || status.status === "completed") return true;
+            if (status.status === "failed" || status.status === "cancelled") return false;
+          } catch {
+            // continue polling
+          }
+          if (attempts < maxAttempts) {
+            await new Promise((r) => setTimeout(r, 2000));
+            return pollPayment();
+          }
+          return true;
+        };
+
+        const paid = await pollPayment();
+        if (paid) {
+          clearCart();
+          setOrderStatus("success");
+        } else {
+          setOrderStatus("failed");
+          setError("Payment was not completed. Please check your orders page.");
+        }
       });
-
-      // Poll for payment status
-      let attempts = 0;
-      const maxAttempts = 10;
-      const pollPayment = async (): Promise<boolean> => {
-        attempts++;
-        try {
-          const status = await paymentsApi.getIntent(intent.id);
-          if (status.status === "succeeded" || status.status === "completed") return true;
-          if (status.status === "failed" || status.status === "cancelled") return false;
-        } catch {
-          // continue polling
-        }
-        if (attempts < maxAttempts) {
-          await new Promise((r) => setTimeout(r, 2000));
-          return pollPayment();
-        }
-        // After max attempts, assume success (backend may process async)
-        return true;
-      };
-
-      const paid = await pollPayment();
-      if (paid) {
-        clearCart();
-        setOrderStatus("success");
-      } else {
-        setOrderStatus("failed");
-        setError("Payment was not completed. Please check your orders page.");
-      }
-    } catch {
-      setError("Failed to place order. Please try again.");
+    } catch (e: unknown) {
+      setError(messageFromApiError(e, "Failed to place order. Please try again."));
     } finally {
       setPlacing(false);
     }

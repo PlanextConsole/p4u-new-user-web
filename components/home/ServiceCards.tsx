@@ -169,7 +169,7 @@ function CardInner({ card, mobile }: CardInnerProps) {
           fontStyle:"italic", fontSize:subSize,
           textAlign:"center", lineHeight:1.35, zIndex:1,
         }}>
-          We'll assist you any time.
+          We&apos;ll assist you any time.
         </p>
  
         {!mobile && (

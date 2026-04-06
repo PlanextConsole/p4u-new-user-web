@@ -7,19 +7,23 @@ const BASE = "/api/v1/commerce";
 /* ------------------------------------------------------------------ */
 
 export interface CartItemApi {
-  id: number;
-  productId: number;
+  id: string;
+  productId: string;
   productName?: string;
   productImage?: string;
-  price: number;
+  unitPrice?: string;
+  /** Some responses expose a numeric price alias */
+  price?: number;
   quantity: number;
-  vendorId?: number;
+  vendorId?: string | null;
+  lineTotal?: string;
 }
 
 export interface Cart {
-  id: number;
+  id: number | string;
   items: CartItemApi[];
-  totalAmount: number;
+  totalAmount?: number;
+  subtotal?: string;
 }
 
 export interface Order {
@@ -121,28 +125,54 @@ export const commerceApi = {
     return apiClient.get<Cart>(`${BASE}/cart`);
   },
 
-  updateCart(items: { productId: number; quantity: number }[]) {
-    return apiClient.put<Cart>(`${BASE}/cart`, { items });
+  updateCart(
+    items: {
+      productId: string | number;
+      quantity: number;
+      unitPrice?: number;
+      vendorId?: string | null;
+    }[],
+  ) {
+    return apiClient.put<Cart>(`${BASE}/cart`, {
+      items: items.map((i) => ({
+        productId: String(i.productId),
+        quantity: i.quantity,
+        ...(i.unitPrice != null ? { unitPrice: i.unitPrice } : {}),
+        ...(i.vendorId != null && i.vendorId !== "" ? { vendorId: i.vendorId } : {}),
+      })),
+    });
   },
 
-  addCartItem(productId: number, quantity = 1, unitPrice?: number) {
-    return apiClient.post<Cart>(`${BASE}/cart/items`, { productId, quantity, ...(unitPrice != null ? { unitPrice } : {}) });
+  addCartItem(productId: string | number, quantity = 1, unitPrice?: number, vendorId?: string | null) {
+    return apiClient.post<Cart>(`${BASE}/cart/items`, {
+      productId: String(productId),
+      quantity,
+      ...(unitPrice != null ? { unitPrice } : {}),
+      ...(vendorId != null && vendorId !== "" ? { vendorId } : {}),
+    });
   },
 
-  updateCartItem(itemId: number, quantity: number) {
-    return apiClient.patch<Cart>(`${BASE}/cart/items/${itemId}`, { quantity });
+  updateCartItem(itemId: string | number, quantity: number) {
+    return apiClient.patch<Cart>(`${BASE}/cart/items/${encodeURIComponent(String(itemId))}`, { quantity });
   },
 
-  removeCartItem(itemId: number) {
-    return apiClient.delete<Cart>(`${BASE}/cart/items/${itemId}`);
+  removeCartItem(itemId: string | number) {
+    return apiClient.delete<Cart>(`${BASE}/cart/items/${encodeURIComponent(String(itemId))}`);
   },
 
   clearCart() {
     return apiClient.delete<void>(`${BASE}/cart`);
   },
 
-  mergeCart(items: { productId: number; quantity: number; unitPrice?: number }[]) {
-    return apiClient.post<Cart>(`${BASE}/cart/merge`, { items });
+  mergeCart(items: { productId: string | number; quantity: number; unitPrice?: number; vendorId?: string | null }[]) {
+    return apiClient.post<Cart>(`${BASE}/cart/merge`, {
+      items: items.map((i) => ({
+        productId: String(i.productId),
+        quantity: i.quantity,
+        ...(i.unitPrice != null ? { unitPrice: i.unitPrice } : {}),
+        ...(i.vendorId != null && i.vendorId !== "" ? { vendorId: i.vendorId } : {}),
+      })),
+    });
   },
 
   // Orders

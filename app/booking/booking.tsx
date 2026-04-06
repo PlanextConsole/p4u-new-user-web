@@ -576,7 +576,7 @@ export default function Booking() {
             {activeTab} Bookings
           </h2>
           <p style={{ fontSize: 16, color: "#6b7280" }}>
-            We're currently building out the {activeTab.toLowerCase()} experience. Check back soon!
+            We&apos;re currently building out the {activeTab.toLowerCase()} experience. Check back soon!
           </p>
         </div>
       )}
@@ -711,7 +711,7 @@ export default function Booking() {
             {step === "select_ride" && (
               <div style={{ background: "white", borderRadius: 16, border: "1px solid #e5e7eb", padding: 20 }}>
                 <h3 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 4px" }}>
-                  Choose a Ride <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 500 }}>(Rides we think you'll like)</span>
+                  Choose a Ride <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 500 }}>(Rides we think you&apos;ll like)</span>
                 </h3>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10, marginTop: 14 }}>
                   {vehicles.map((v, i) => (

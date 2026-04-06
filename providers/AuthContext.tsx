@@ -2,10 +2,15 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
 import { authApi } from "@/lib/api/auth";
 import type { ApiError } from "@/lib/api/client";
+import {
+  resolveCustomerIdFromAccessToken,
+  displayNameFromAccessToken,
+} from "@/lib/resolveCustomerId";
 
 interface AuthContextType {
   isLoggedIn: boolean;
   loggedPhone: string;
+  displayName: string;
   isLoading: boolean;
   token: string | null;
   login: (phone: string, password?: string) => Promise<void>;
@@ -28,26 +33,17 @@ function accessTokenExpiresAtMs(accessToken: string): number | null {
   }
 }
 
-function customerIdFromJwt(accessToken: string): string | null {
-  try {
-    const parts = accessToken.split(".");
-    if (parts.length < 2) return null;
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const json = atob(base64);
-    const payload = JSON.parse(json) as { customer_id?: string | number; customerId?: string | number };
-    const id = payload.customer_id ?? payload.customerId;
-    return id != null ? String(id) : null;
-  } catch {
-    return null;
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loggedPhone, setLoggedPhone] = useState("");
   const [token, setToken] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const logoutRef = useRef<() => void>(() => {});
+
+  const syncDisplayName = (accessToken: string | null, phone: string) => {
+    setDisplayName(displayNameFromAccessToken(accessToken, phone || null));
+  };
 
   // Restore session from localStorage
   useEffect(() => {
@@ -58,10 +54,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoggedIn(true);
       setLoggedPhone(phone);
       setToken(savedToken);
+      const cid =
+        localStorage.getItem("p4u_customer_id") || resolveCustomerIdFromAccessToken(savedToken);
+      if (cid) localStorage.setItem("p4u_customer_id", cid);
+      syncDisplayName(savedToken, phone);
     } else if (localStorage.getItem("p4u_loggedIn") === "true" && phone) {
       // Legacy local-only session
       setIsLoggedIn(true);
       setLoggedPhone(phone);
+      syncDisplayName(null, phone);
     }
     setIsLoading(false);
   }, []);
@@ -74,9 +75,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("p4u_token", res.accessToken);
       localStorage.setItem("p4u_refresh_token", res.refreshToken);
       localStorage.setItem("p4u_token_expires_in", String(res.expiresIn));
-      const customerId = res.customerId ? String(res.customerId) : customerIdFromJwt(res.accessToken);
+      const customerId =
+        res.customerId != null && String(res.customerId).trim() !== ""
+          ? String(res.customerId)
+          : resolveCustomerIdFromAccessToken(res.accessToken);
       if (customerId) localStorage.setItem("p4u_customer_id", customerId);
       setToken(res.accessToken);
+      const phone = localStorage.getItem("p4u_phone") || "";
+      syncDisplayName(res.accessToken, phone);
     };
 
     const runRefresh = async (isRetryAfterNetworkFailure: boolean) => {
@@ -128,20 +134,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem("p4u_token_expires_in", String(res.expiresIn));
         localStorage.setItem("p4u_loggedIn", "true");
         localStorage.setItem("p4u_phone", phone);
-        const customerId = res.customerId ? String(res.customerId) : customerIdFromJwt(res.accessToken);
+        const customerId =
+          res.customerId != null && String(res.customerId).trim() !== ""
+            ? String(res.customerId)
+            : resolveCustomerIdFromAccessToken(res.accessToken);
         if (customerId) localStorage.setItem("p4u_customer_id", customerId);
         setToken(res.accessToken);
         setIsLoggedIn(true);
         setLoggedPhone(phone);
+        syncDisplayName(res.accessToken, phone);
       } catch (err: any) {
         throw new Error(err?.message ?? "Login failed");
       }
     } else {
-      // Fallback: local-only login (OTP deferred)
+      // OTP deferred or AuthModal already stored tokens — sync from storage
       localStorage.setItem("p4u_loggedIn", "true");
       localStorage.setItem("p4u_phone", phone);
       setIsLoggedIn(true);
       setLoggedPhone(phone);
+      const existing = localStorage.getItem("p4u_token");
+      if (existing) {
+        setToken(existing);
+        const cid =
+          localStorage.getItem("p4u_customer_id") || resolveCustomerIdFromAccessToken(existing);
+        if (cid) localStorage.setItem("p4u_customer_id", cid);
+        syncDisplayName(existing, phone);
+      } else {
+        syncDisplayName(null, phone);
+      }
     }
   }
 
@@ -162,6 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoggedIn(false);
     setLoggedPhone("");
     setToken(null);
+    setDisplayName("");
     localStorage.removeItem("p4u_loggedIn");
     localStorage.removeItem("p4u_phone");
     localStorage.removeItem("p4u_token");
@@ -173,7 +194,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   logoutRef.current = logout;
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, loggedPhone, isLoading, token, login, signup, logout }}>
+    <AuthContext.Provider
+      value={{ isLoggedIn, loggedPhone, displayName, isLoading, token, login, signup, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -5,6 +5,7 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ShopPage from "@/app/shop/shop";
 import { useRouter } from "next/navigation";
+import { notifyNavigationIntent } from "@/lib/appLoadingBus";
 
 export default function ShopRoute() {
   const router = useRouter();
@@ -13,7 +14,12 @@ export default function ShopRoute() {
     <div className="min-h-screen flex flex-col">
       <Header />
       <main className="flex-1">
-        <ShopPage onVendorSelect={(vendorId: string) => router.push(`/shop/${vendorId}`)} />
+        <ShopPage
+          onVendorSelect={(vendorId: string) => {
+            notifyNavigationIntent();
+            router.push(`/shop/${vendorId}`);
+          }}
+        />
       </main>
       <Footer />
     </div>

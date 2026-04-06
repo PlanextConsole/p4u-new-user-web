@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { profileApi, type Address as ProfileAddress } from "@/lib/api/profile";
 import { notificationsApi } from "@/lib/api/notifications";
 import { commerceApi } from "@/lib/api/commerce";
+import { resolveCustomerIdFromAccessToken } from "@/lib/resolveCustomerId";
 type ActivePage =
   | "profile" | "saved-addresses" | "select-language" | "notification"
   | "your-orders" | "reviews-ratings" | "your-favourites" | "refer-earn"
@@ -881,8 +882,13 @@ function PageYourOrders() {
   const data = apiOrders.length ? apiOrders : (tab === "Shop" ? SHOP_ORDERS : tab === "Services" ? SERVICE_ORDERS : BOOKING_ORDERS);
 
   useEffect(() => {
-    const customerId = localStorage.getItem("p4u_customer_id") || "";
+    const token = localStorage.getItem("p4u_token");
+    const customerId =
+      localStorage.getItem("p4u_customer_id") || resolveCustomerIdFromAccessToken(token) || "";
     if (!customerId) return;
+    if (!localStorage.getItem("p4u_customer_id")) {
+      localStorage.setItem("p4u_customer_id", customerId);
+    }
     commerceApi.getOrders(customerId, { limit: 50 }).then((res: any) => {
       if (res.data?.length) {
         setApiOrders(res.data.map((o: any) => {
@@ -1278,7 +1284,7 @@ function PageBecomeVendor() {
     <div className="p-5 sm:p-6 flex flex-col items-center justify-center min-h-64 gap-4">
       <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600"><IcPartyPopper s={32} /></div>
       <p className="text-base font-semibold text-slate-800">Application Submitted!</p>
-      <p className="text-sm text-slate-500 text-center">We'll review your application and get back to you within 2-3 business days.</p>
+      <p className="text-sm text-slate-500 text-center">We&apos;ll review your application and get back to you within 2-3 business days.</p>
     </div>
   );
 
@@ -1292,7 +1298,7 @@ function PageBecomeVendor() {
             <p className="text-sm text-slate-500 mb-6 leading-relaxed">Join thousands of sellers on our platform and start selling today.</p>
             <div className="flex gap-3">
               <GhostBtn onClick={() => setShowModal(false)} className="flex-1">Not Now</GhostBtn>
-              <PrimaryBtn onClick={() => setShowModal(false)} className="flex-1">Let's Go!</PrimaryBtn>
+              <PrimaryBtn onClick={() => setShowModal(false)} className="flex-1">Let&apos;s Go!</PrimaryBtn>
             </div>
           </div>
         </Modal>
@@ -1369,7 +1375,7 @@ function PageAccountPrivacy() {
       )}
       <SectionTitle>Account Privacy</SectionTitle>
       <div className="text-sm text-slate-600 mb-5 space-y-3 leading-relaxed">
-        <p>At Planext4u, we are committed to protecting the privacy and security of our users' personal information.</p>
+        <p>At Planext4u, we are committed to protecting the privacy and security of our users&apos; personal information.</p>
         <p>We collect information such as your name, email address, phone number, and payment details to facilitate transactions and provide our services.</p>
         <p>Your data is stored securely and never sold to third parties. You have the right to access, modify, or delete your personal information at any time.</p>
       </div>
@@ -1400,7 +1406,7 @@ function PageLogout({ onCancel }: { onCancel: () => void }) {
       <div className="bg-white rounded-2xl p-8 w-full max-w-xs shadow-sm border border-slate-100 text-center">
         <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4 text-slate-500"><IcLogOutBig /></div>
         <h3 className="text-base font-semibold text-slate-800 mb-2">Leaving so soon?</h3>
-        <p className="text-sm text-slate-500 mb-6 leading-relaxed">You're about to end your session. Come back anytime!</p>
+        <p className="text-sm text-slate-500 mb-6 leading-relaxed">You&apos;re about to end your session. Come back anytime!</p>
         <div className="flex gap-3">
           <GhostBtn onClick={onCancel} className="flex-1">Stay</GhostBtn>
           <PrimaryBtn className="flex-1">Log Out</PrimaryBtn>

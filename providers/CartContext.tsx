@@ -1,10 +1,13 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
-import { commerceApi } from "@/lib/api/commerce";
+import { commerceApi, type Cart, type CartItemApi } from "@/lib/api/commerce";
 
 export interface CartItem {
+  /** Server cart line id (UUID) when synced; otherwise same as productId for local-only rows */
   id: string | number;
+  /** Catalog product id (string or number from API) */
+  productId?: string | number;
   name: string;
   price: number;
   originalPrice: number;
@@ -66,21 +69,40 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setSyncing(true);
     const localItems = loadCart();
 
-    const mapServerItems = (serverCart: { items: typeof localItems extends CartItem[] ? any : any }) =>
-      serverCart.items.map((si: any) => ({
-        id: si.productId,
-        name: si.productName ?? `Product #${si.productId}`,
-        price: si.price,
-        originalPrice: si.price,
-        vendor: "",
-        vendorId: String(si.vendorId ?? ""),
-        qty: si.quantity,
-        image: si.productImage,
+    const mapServerItems = (serverCart: Cart): CartItem[] =>
+      serverCart.items.map((si: CartItemApi) => {
+        const productId = si.productId;
+        const unit = si.unitPrice ?? si.price;
+        const price =
+          typeof unit === "string"
+            ? Number(unit) || 0
+            : typeof unit === "number"
+              ? unit
+              : 0;
+        return {
+          id: si.id,
+          productId,
+          name: si.productName ?? `Product #${productId}`,
+          price,
+          originalPrice: price,
+          vendor: "",
+          vendorId: String(si.vendorId ?? ""),
+          qty: si.quantity,
+          image: si.productImage,
+        };
+      });
+
+    const linesFromLocal = (items: CartItem[]) =>
+      items.map((i) => ({
+        productId: i.productId ?? i.id,
+        quantity: i.qty,
+        unitPrice: i.price,
+        vendorId: i.vendorId || null,
       }));
 
     if (localItems.length) {
       commerceApi
-        .mergeCart(localItems.map((i) => ({ productId: Number(i.id), quantity: i.qty, unitPrice: i.price })))
+        .updateCart(linesFromLocal(localItems))
         .then((serverCart) => {
           setSyncError(null);
           setItems(mapServerItems(serverCart));
@@ -113,31 +135,32 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addToCart = useCallback((newItem: Omit<CartItem, "qty">) => {
-    setItems(prev => {
-      const existing = prev.find(i => i.id === newItem.id);
+    const pid = newItem.productId ?? newItem.id;
+    setItems((prev) => {
+      const existing = prev.find((i) => String(i.productId ?? i.id) === String(pid));
       if (existing) {
-        return prev.map(i => i.id === newItem.id ? { ...i, qty: i.qty + 1 } : i);
+        return prev.map((i) =>
+          String(i.productId ?? i.id) === String(pid) ? { ...i, qty: i.qty + 1 } : i,
+        );
       }
-      return [...prev, { ...newItem, qty: 1 }];
+      return [...prev, { ...newItem, productId: pid, qty: 1 }];
     });
-    syncToServer(() => commerceApi.addCartItem(Number(newItem.id), 1, newItem.price));
+    syncToServer(() => commerceApi.addCartItem(pid, 1, newItem.price, newItem.vendorId || null));
   }, [syncToServer]);
 
   const removeFromCart = useCallback((id: string | number) => {
-    setItems(prev => prev.filter(i => i.id !== id));
-    syncToServer(() => commerceApi.removeCartItem(Number(id)));
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    syncToServer(() => commerceApi.removeCartItem(id));
   }, [syncToServer]);
 
   const updateQty = useCallback((id: string | number, qty: number) => {
-    setItems(prev =>
+    setItems((prev) =>
       qty <= 0
-        ? prev.filter(i => i.id !== id)
-        : prev.map(i => i.id === id ? { ...i, qty } : i)
+        ? prev.filter((i) => i.id !== id)
+        : prev.map((i) => (i.id === id ? { ...i, qty } : i)),
     );
     syncToServer(() =>
-      qty <= 0
-        ? commerceApi.removeCartItem(Number(id))
-        : commerceApi.updateCartItem(Number(id), qty)
+      qty <= 0 ? commerceApi.removeCartItem(id) : commerceApi.updateCartItem(id, qty),
     );
   }, [syncToServer]);
 

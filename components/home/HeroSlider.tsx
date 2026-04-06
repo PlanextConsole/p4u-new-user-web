@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import banner1 from "../../images/home-banner/banner1.png";
@@ -7,8 +7,14 @@ import banner2 from "../../images/home-banner/banner2.jpg";
 import banner3 from "../../images/home-banner/banner3.png";
 import { contentApi } from "@/lib/api/content";
 
+const FALLBACK_SLIDES = [
+  { image: banner1, alt: "Banner" },
+  { image: banner2, alt: "Banner" },
+  { image: banner3, alt: "Banner" },
+];
+
 export default function HeroSlider() {
-  const [slides, setSlides] = useState<{ image: any; alt: string }[]>([]);
+  const [slides, setSlides] = useState<{ image: any; alt: string }[]>(FALLBACK_SLIDES);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(true);
   const [slidePosition, setSlidePosition] = useState(0);
@@ -17,45 +23,59 @@ export default function HeroSlider() {
     contentApi.getBanners().then((banners) => {
       if (banners.length) {
         setSlides(banners.map((b) => ({ image: (b.imageUrl || b.image) as any, alt: b.title ?? "Banner" })));
+        setCurrentSlide(0);
+        setSlidePosition(0);
       }
     }).catch(() => {});
   }, []);
- 
+
+  const nextSlide = useCallback(() => {
+    setIsTransitioning(true);
+    setSlidePosition((prev) => prev - 100);
+    setCurrentSlide((prev) => {
+      const len = slides.length;
+      if (len < 1) return 0;
+      return (prev + 1) % len;
+    });
+  }, [slides.length]);
+
+  const prevSlide = useCallback(() => {
+    setIsTransitioning(true);
+    setSlidePosition((prev) => prev + 100);
+    setCurrentSlide((prev) => {
+      const len = slides.length;
+      if (len < 1) return 0;
+      return (prev - 1 + len) % len;
+    });
+  }, [slides.length]);
+
   useEffect(() => {
+    if (slides.length < 1) return;
     const timer = setInterval(() => {
       nextSlide();
     }, 5000);
     return () => clearInterval(timer);
-  }, [currentSlide]);
+  }, [slides.length, nextSlide]);
 
-  const nextSlide = () => {
-    setIsTransitioning(true);
-    setSlidePosition((prev) => prev - 100);
-    setCurrentSlide((prev) => (prev + 1) % slides.length);
-  };
-
-  const prevSlide = () => {
-    setIsTransitioning(true);
-    setSlidePosition((prev) => prev + 100);
-    setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length);
-  };
- 
   useEffect(() => {
-    if (currentSlide === 0 && slidePosition <= -300) {
-      const timer = setTimeout(() => {
+    const n = slides.length;
+    if (n < 1) return;
+    const wrap = n * 100;
+    if (currentSlide === 0 && slidePosition <= -wrap) {
+      const t = setTimeout(() => {
         setIsTransitioning(false);
         setSlidePosition(0);
       }, 700);
-      return () => clearTimeout(timer);
+      return () => clearTimeout(t);
     }
-    if (currentSlide === slides.length - 1 && slidePosition >= 0 && slidePosition > -100) {
-      const timer = setTimeout(() => {
+    if (currentSlide === n - 1 && slidePosition >= 0 && slidePosition > -100) {
+      const t = setTimeout(() => {
         setIsTransitioning(false);
-        setSlidePosition(-(slides.length - 1) * 100);
+        setSlidePosition(-(n - 1) * 100);
       }, 700);
-      return () => clearTimeout(timer);
+      return () => clearTimeout(t);
     }
-  }, [currentSlide, slidePosition]);
+  }, [currentSlide, slidePosition, slides.length]);
 
   if (slides.length === 0) {
     return (
