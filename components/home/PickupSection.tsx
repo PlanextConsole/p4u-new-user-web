@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { contentApi } from '@/lib/api/content';
+import { resolveMediaUrl } from '@/lib/media';
 import homeTheater from '../../images/pickup-section/home-theater.png';
 import sportShoes from '../../images/pickup-section/sport-shoes.png';
 import galaxy from '../../images/pickup-section/galaxy.png';
@@ -29,7 +30,7 @@ export default function PickupSection() {
         items.forEach((fp) => {
           const sec = fp.section || 'Featured';
           if (!grouped[sec]) grouped[sec] = [];
-          grouped[sec].push({ image: fp.imageUrl, name: fp.name });
+          grouped[sec].push({ image: resolveMediaUrl(fp.imageUrl) || fp.imageUrl, name: fp.name });
         });
         const apiSections = Object.entries(grouped).map(([title, products]) => ({
           title,

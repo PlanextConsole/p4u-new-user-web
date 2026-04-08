@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { profileApi, type Address as ProfileAddress } from "@/lib/api/profile";
 import { notificationsApi } from "@/lib/api/notifications";
 import { commerceApi } from "@/lib/api/commerce";
+import { catalogApi } from "@/lib/api/catalog";
+import { pickProductImage, resolveMediaUrl } from "@/lib/media";
 import { resolveCustomerIdFromAccessToken } from "@/lib/resolveCustomerId";
 type ActivePage =
   | "profile" | "saved-addresses" | "select-language" | "notification"
@@ -38,7 +40,6 @@ const IcPlus = ({ s = 16 }) => <Ic size={s} d='<line x1="12" y1="5" x2="12" y2="
 const IcNav = ({ s = 16 }) => <Ic size={s} d='<polygon points="3 11 22 2 13 21 11 13 3 11"/>' />;
 const IcCheck = ({ s = 16 }) => <Ic size={s} d='<polyline points="20 6 9 17 4 12"/>' />;
 const IcCamera = ({ s = 16 }) => <Ic size={s} d='<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>' />;
-const IcUpload = ({ s = 20 }) => <Ic size={s} d='<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>' />;
 const IcX = ({ s = 14 }) => <Ic size={s} d='<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>' />;
 const IcMenu = ({ s = 20 }) => <Ic size={s} d='<line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>' />;
 const IcCopy = ({ s = 15 }) => <Ic size={s} d='<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' />;
@@ -92,11 +93,63 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
 
 
 
-const ProductImg = ({ src, alt, className = "" }: { src: string; alt: string; className?: string }) => (
-  <img src={src} alt={alt} loading="lazy"
-    className={`object-cover rounded-xl bg-slate-100 ${className}`}
-    onError={e => { (e.currentTarget as HTMLImageElement).src = ""; }} />
-);
+function orderLineSnapshotThumb(line: { metadata?: unknown } | null | undefined): string | null {
+  const m = line?.metadata;
+  if (!m || typeof m !== "object") return null;
+  const o = m as Record<string, unknown>;
+  const raw =
+    (typeof o.thumbnailUrl === "string" && o.thumbnailUrl) ||
+    (typeof o.productImage === "string" && o.productImage) ||
+    (typeof o.imageUrl === "string" && o.imageUrl) ||
+    (typeof o.image === "string" && o.image) ||
+    null;
+  return resolveMediaUrl(raw);
+}
+
+function firstOrderLineVendorLabel(lines: { metadata?: unknown }[], orderVendorId: unknown): string {
+  const m = lines[0]?.metadata;
+  if (m && typeof m === "object") {
+    const v = (m as Record<string, unknown>).vendorName;
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  if (orderVendorId != null && String(orderVendorId).trim()) return String(orderVendorId);
+  return "—";
+}
+
+function firstOrderLineTitle(lines: { metadata?: unknown; productId?: unknown }[], orderRef: string): string {
+  const m = lines[0]?.metadata;
+  if (m && typeof m === "object") {
+    const n = (m as Record<string, unknown>).productName;
+    if (typeof n === "string" && n.trim()) return n.trim();
+  }
+  const pid = lines[0]?.productId;
+  if (pid != null && String(pid).trim()) return `Product #${pid}`;
+  return `Order #${orderRef}`;
+}
+
+function ProductImg({ src, alt, className = "" }: { src: string; alt: string; className?: string }) {
+  const [failed, setFailed] = useState(false);
+  const url = typeof src === "string" ? src.trim() : "";
+  if (!url || failed) {
+    return (
+      <div
+        className={`flex items-center justify-center rounded-xl bg-slate-100 text-slate-400 text-[10px] font-medium text-center px-1 ${className}`}
+        aria-hidden
+      >
+        No img
+      </div>
+    );
+  }
+  return (
+    <img
+      src={url}
+      alt={alt}
+      loading="lazy"
+      className={`object-cover rounded-xl bg-slate-100 ${className}`}
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -208,38 +261,6 @@ const GhostBtn = ({
   </button>
 );
 
-const UploadZone = ({ label, value, onFile, onClear }: {
-  label: string; value: string | null; onFile: (url: string) => void; onClear: () => void;
-}) => {
-  const ref = useRef<HTMLInputElement>(null);
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    const reader = new FileReader();
-    reader.onload = ev => onFile(ev.target?.result as string);
-    reader.readAsDataURL(f);
-    e.target.value = "";
-  };
-  return (
-    <div className="flex flex-col gap-1 w-full">
-      <label className="text-xs text-slate-500">{label}</label>
-      {value ? (
-        <div className="relative rounded-xl overflow-hidden border border-slate-200">
-          <img src={value} alt={label} className="w-full h-32 object-cover" />
-          <button onClick={onClear} className="absolute top-2 right-2 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center"><IcX /></button>
-        </div>
-      ) : (
-        <div onClick={() => ref.current?.click()}
-          className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center cursor-pointer transition-all hover:border-emerald-500 hover:bg-emerald-50/30 flex flex-col items-center gap-1.5">
-          <span className="text-slate-300"><IcUpload /></span>
-          <p className="text-xs text-slate-400">Click to upload</p>
-          <p className="text-[10px] text-slate-300">JPG, PNG, JPEG • Max 10MB</p>
-        </div>
-      )}
-      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={handleChange} />
-    </div>
-  );
-};
-
 const Modal = ({ children, onClose }: { children: React.ReactNode; onClose: () => void }) => (
   <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4"
     onClick={e => e.target === e.currentTarget && onClose()}>
@@ -248,21 +269,37 @@ const Modal = ({ children, onClose }: { children: React.ReactNode; onClose: () =
 );
 
 function PageProfile() {
-  const [form, setForm] = useState({ name: "", mobile: "", email: "", dob: "", gender: "", adhar: "", adharNumber: "", author: false, okps: false });
+  const [form, setForm] = useState({
+    name: "",
+    mobile: "",
+    email: "",
+    dob: "",
+    gender: "",
+    author: false,
+    okps: false,
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [frontImg, setFrontImg] = useState<string | null>(null);
-  const [backImg, setBackImg] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
   useEffect(() => {
-    profileApi.getMe().then((p) => {
-      setForm((f) => ({
-        ...f,
-        name: p.name ?? f.name,
-        mobile: p.phone ?? f.mobile,
-        email: p.email ?? f.email,
-      }));
-    }).catch(() => { /* offline or not logged in */ });
+    profileApi
+      .getMe()
+      .then((p) => {
+        setForm((f) => ({
+          ...f,
+          name: p.name ?? "",
+          mobile: p.phone ?? "",
+          email: p.email ?? "",
+          dob: p.dob ?? "",
+          gender: p.gender ?? "",
+        }));
+      })
+      .catch(() => {
+        /* offline or not logged in */
+      })
+      .finally(() => setLoadingProfile(false));
   }, []);
 
   const setField = (k: string, v: string | boolean) => {
@@ -278,25 +315,45 @@ function PageProfile() {
     if (!form.email.trim()) e.email = "Email address is required";
     else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = "Enter a valid email address";
     if (!form.gender) e.gender = "Please select your gender";
-    if (form.adharNumber && !/^\d{12}$/.test(form.adharNumber)) e.adharNumber = "Aadhar number must be 12 digits";
     setErrors(e); return Object.keys(e).length === 0;
   };
 
   const handleSubmit = async () => {
     if (!validate()) return;
+    setSaveError(null);
     try {
-      await profileApi.updateMe({ name: form.name, email: form.email, phone: form.mobile });
-    } catch { /* save locally even if API fails */ }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+      await profileApi.updateMe({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phone: form.mobile.trim(),
+        ...(form.dob ? { dob: form.dob } : {}),
+        ...(form.gender ? { gender: form.gender } : {}),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err && typeof (err as Error).message === "string"
+          ? (err as Error).message
+          : "Could not update profile. Check you are logged in and try again.";
+      setSaveError(msg);
+    }
   };
 
   return (
     <div className="p-5 sm:p-6">
       <SectionTitle>Personal Information</SectionTitle>
+      {loadingProfile && (
+        <p className="text-sm text-slate-500 mb-4">Loading your profile…</p>
+      )}
       {saved && (
         <div className="mb-4 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center gap-2">
           <span className="text-emerald-600"><IcCheckCircle /></span> Profile updated successfully!
+        </div>
+      )}
+      {saveError && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm">
+          {saveError}
         </div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -311,8 +368,6 @@ function PageProfile() {
         <Select label="Gender *" value={form.gender} onChange={e => setField("gender", e.target.value)}
           error={errors.gender}
           options={[{ value: "", label: "Select gender" }, { value: "Male", label: "Male" }, { value: "Female", label: "Female" }, { value: "Other", label: "Other" }]} />
-        <Input label="Adhar ID" placeholder="Adhar ID number" value={form.adhar}
-          onChange={e => setField("adhar", e.target.value)} />
       </div>
       <div className="mb-4">
         <p className="text-xs text-slate-500 mb-2">Author Type</p>
@@ -326,16 +381,7 @@ function PageProfile() {
           ))}
         </div>
       </div>
-      <div className="mb-5 max-w-xs">
-        <Input label="Aadhar Number" placeholder="12-digit aadhar number" value={form.adharNumber}
-          onChange={e => setField("adharNumber", e.target.value.replace(/\D/g, "").slice(0, 12))}
-          error={errors.adharNumber} />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <UploadZone label="Aadhar Card (Front)" value={frontImg} onFile={setFrontImg} onClear={() => setFrontImg(null)} />
-        <UploadZone label="Aadhar Card (Back)" value={backImg} onFile={setBackImg} onClear={() => setBackImg(null)} />
-      </div>
-      <div className="flex justify-end"><PrimaryBtn onClick={handleSubmit}>Update Profile</PrimaryBtn></div>
+      <div className="flex justify-end"><PrimaryBtn onClick={handleSubmit} disabled={loadingProfile}>Update Profile</PrimaryBtn></div>
     </div>
   );
 }
@@ -889,23 +935,79 @@ function PageYourOrders() {
     if (!localStorage.getItem("p4u_customer_id")) {
       localStorage.setItem("p4u_customer_id", customerId);
     }
-    commerceApi.getOrders(customerId, { limit: 50 }).then((res: any) => {
-      if (res.data?.length) {
-        setApiOrders(res.data.map((o: any) => {
-          const lines = Array.isArray(o.items) ? o.items : Array.isArray(o.metadata?.lines) ? o.metadata.lines : [];
-          const itemCount = lines.reduce((s: number, l: any) => s + (l.quantity || 1), 0);
-          const statusColor = o.status === "delivered" || o.status === "completed" ? "#22c55e"
-            : o.status === "cancelled" ? "#ef4444"
-            : o.status === "created" || o.status === "pending" ? "#f59e0b"
-            : "#3b82f6";
-          return {
-            id: o.orderRef || o.id, img: "", title: `Order #${o.orderRef || o.id}`,
-            sub: `${itemCount} item${itemCount !== 1 ? "s" : ""}`, price: `₹${o.totalAmount}`,
-            status: o.status, statusColor, date: new Date(o.createdAt).toLocaleDateString(),
-          };
-        }));
-      }
-    }).catch(() => {});
+    commerceApi
+      .getOrders(customerId, { limit: 50 })
+      .then(async (res: any) => {
+        const list = res.data;
+        if (!list?.length) return;
+
+        type Row = { o: any; lines: any[]; imgMeta: string | null };
+        const mapped: Row[] = list.map((o: any) => {
+          const lines = Array.isArray(o.items)
+            ? o.items
+            : Array.isArray(o.metadata?.lines)
+              ? o.metadata.lines
+              : [];
+          const imgMeta = lines.length ? orderLineSnapshotThumb(lines[0]) : null;
+          return { o, lines, imgMeta };
+        });
+
+        const needIds = new Set<string>();
+        for (const row of mapped) {
+          if (row.imgMeta) continue;
+          const pid = row.lines[0]?.productId;
+          if (pid != null && String(pid).trim()) needIds.add(String(pid));
+        }
+
+        const thumbByProductId: Record<string, string | null> = {};
+        await Promise.all(
+          [...needIds].map(async (pid) => {
+            try {
+              const p = await catalogApi.getProduct(pid);
+              thumbByProductId[pid] = pickProductImage(p as Parameters<typeof pickProductImage>[0]);
+            } catch {
+              thumbByProductId[pid] = null;
+            }
+          }),
+        );
+
+        setApiOrders(
+          mapped.map(({ o, lines, imgMeta }) => {
+            const itemCount = lines.reduce((s: number, l: any) => s + (l.quantity || 1), 0);
+            const statusColor =
+              o.status === "delivered" || o.status === "completed"
+                ? "#22c55e"
+                : o.status === "cancelled"
+                  ? "#ef4444"
+                  : o.status === "created" || o.status === "pending"
+                    ? "#f59e0b"
+                    : "#3b82f6";
+            const orderRef = String(o.orderRef || o.id);
+            const pid = lines[0]?.productId != null ? String(lines[0].productId) : "";
+            const fromCatalog = pid ? thumbByProductId[pid] : null;
+            const imgUrl = imgMeta || fromCatalog || "";
+            const total = o.totalAmount ?? 0;
+            const priceStr =
+              typeof total === "number"
+                ? total.toFixed(2)
+                : String(total);
+            return {
+              id: orderRef,
+              img: imgUrl,
+              title: firstOrderLineTitle(lines, orderRef),
+              sub: `${itemCount} item${itemCount !== 1 ? "s" : ""}`,
+              vendor: firstOrderLineVendorLabel(lines, o.vendorId),
+              orig: "",
+              price: `₹${priceStr}`,
+              off: "",
+              status: o.status,
+              statusColor,
+              date: new Date(o.createdAt).toLocaleDateString(),
+            };
+          }),
+        );
+      })
+      .catch(() => {});
   }, []);
 
   return (

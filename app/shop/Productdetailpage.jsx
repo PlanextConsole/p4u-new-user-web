@@ -6,6 +6,7 @@ import {
   ThumbsUp, ChevronDown, ChevronUp, Tag, Zap
 } from "lucide-react";
 import { useCart } from "@/providers/CartContext";
+import { buildProductGalleryImages, resolveMediaUrl } from "@/lib/media";
 
 function enrich(p) {
   if (!p) return {};
@@ -124,10 +125,20 @@ function enrich(p) {
   const reviewsList = p.reviewsList || [];
 
   const images = p.images?.length
-    ? p.images
-    : p.imageUrl
-      ? [p.imageUrl]
-      : null;
+    ? p.images.map((u) => resolveMediaUrl(u) || u).filter(Boolean)
+    : (() => {
+        const g = buildProductGalleryImages({
+          thumbnailUrl: p.thumbnailUrl,
+          bannerUrls: p.bannerUrls,
+          image: p.image,
+          imageUrl: p.imageUrl,
+          metadata: p.metadata,
+        });
+        if (g.length) return g;
+        if (p.imageUrl) return [resolveMediaUrl(p.imageUrl) || p.imageUrl];
+        if (p.image) return [resolveMediaUrl(p.image) || p.image];
+        return null;
+      })();
 
   const availableOffers = p.availableOffers || [];
 

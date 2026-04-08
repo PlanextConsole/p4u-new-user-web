@@ -3,7 +3,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useCart } from "@/providers/CartContext";
 import { TEAL, TEAL_GRAD, TEAL_DARK, BannerSlide, Vendor, Product } from "./serviceData";
 import { catalogApi } from "@/lib/api/catalog";
-import { commerceApi } from "@/lib/api/commerce"; 
+import { commerceApi } from "@/lib/api/commerce";
+import { pickProductImage, pickVendorImage } from "@/lib/media";
 const IC = {
   Star:      ({ fill="#f59e0b",size=13 }:{ fill?:string;size?:number })=><svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={fill} strokeWidth="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
   MapPin:    ()=><svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>,
@@ -474,13 +475,13 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
     ])
       .then(([v, productsRes, summary]) => {
         if (cancelled) return;
-        const logoUrl = v.logoUrl?.trim();
-        const logoText = v.logo?.trim();
-        const logoDisplay = logoUrl || logoText || "🏪";
-        const bannerIcon = logoUrl ? "🏪" : logoDisplay;
+        const logoResolved = pickVendorImage(v as any)?.trim();
+        const logoText = (v as any).logo?.trim();
+        const logoDisplay = logoResolved || logoText || "🏪";
+        const bannerIcon = logoResolved ? "🏪" : logoDisplay;
         setVendor({
           id: String(v.id),
-          name: v.name,
+          name: (v as any).businessName || (v as any).name || "Vendor",
           logo: logoDisplay,
           logoColor: "#0d9488",
           verified: Boolean(v.isActive),
@@ -502,11 +503,13 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
             id: p.id,
             name: p.name,
             brand: (p.metadata?.brand as string) ?? "",
-            price: p.price,
-            originalPrice: p.originalPrice ?? p.price,
+            price: Number((p as any).finalPrice ?? (p as any).sellPrice ?? p.price ?? 0),
+            originalPrice:
+              p.originalPrice ??
+              Number((p as any).finalPrice ?? (p as any).sellPrice ?? p.price ?? 0),
             rating: 0,
             reviews: 0,
-            image: p.image ?? (p.metadata?.imageUrl as string) ?? "",
+            image: pickProductImage(p as any) || "",
             description: p.description ?? "",
             duration: "—",
             category: "General",

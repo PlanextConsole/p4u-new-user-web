@@ -7,7 +7,7 @@ import Footer from "@/components/layout/Footer";
 import ProductDetailPage from "@/app/shop/Productdetailpage";
 import { catalogApi } from "@/lib/api/catalog";
 import { commerceApi } from "@/lib/api/commerce";
-import { notifyNavigationIntent } from "@/lib/appLoadingBus";
+import { buildProductGalleryImages, pickProductImage, resolveMediaUrl } from "@/lib/media";
 
 export default function ProductRoute({
   params,
@@ -52,13 +52,33 @@ export default function ProductRoute({
           // Reviews not available — continue without them
         }
 
+        const priceNum = Number(
+          (p as any).finalPrice ?? (p as any).sellPrice ?? p.price ?? 0,
+        );
+        const mainImage =
+          pickProductImage(p as any) ||
+          resolveMediaUrl(String((p as any).metadata?.imageUrl || "")) ||
+          "";
+        const gallery = buildProductGalleryImages({
+          thumbnailUrl: (p as any).thumbnailUrl,
+          bannerUrls: (p as any).bannerUrls,
+          image: (p as any).image,
+          metadata: p.metadata as any,
+        });
+
         setProduct({
           id: p.id,
           name: p.name,
-          price: p.price,
-          originalPrice: p.originalPrice ?? p.price,
-          image: p.metadata?.imageUrl || p.image || "",
-          description: p.description ?? "",
+          price: priceNum,
+          originalPrice: p.originalPrice ?? priceNum,
+          image: mainImage,
+          imageUrl: mainImage,
+          images: gallery.length ? gallery : mainImage ? [mainImage] : [],
+          description:
+            (p as any).longDescription ||
+            (p as any).shortDescription ||
+            p.description ||
+            "",
           rating: reviewSummary.averageRating || 0,
           reviews: reviewSummary.totalReviews || 0,
           ratingBreakdown: Object.keys(reviewSummary.breakdown).length ? reviewSummary.breakdown : undefined,
@@ -80,11 +100,7 @@ export default function ProductRoute({
   }, [params.vendorId, params.productId]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600" />
-      </div>
-    );
+    return null;
   }
 
   if (!product) {
@@ -111,7 +127,6 @@ export default function ProductRoute({
         <ProductDetailPage
           product={product}
           onBack={() => {
-            notifyNavigationIntent();
             router.push(`/shop/${params.vendorId}`);
           }}
         />

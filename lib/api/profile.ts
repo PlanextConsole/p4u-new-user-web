@@ -7,12 +7,15 @@ const BASE = "/api/v1/profile";
 /* ------------------------------------------------------------------ */
 
 export interface UserProfile {
-  id: number;
+  id: string;
+  /** Normalized from API `fullName` */
   name?: string;
   email?: string;
   phone?: string;
   avatar?: string;
   keycloakUserId?: string;
+  dob?: string;
+  gender?: string;
 }
 
 export interface Address {
@@ -62,6 +65,35 @@ interface BackendAddress {
   isDefault?: boolean;
 }
 
+function mapCustomerRow(row: Record<string, unknown>): UserProfile {
+  const meta =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+  const id = row.id != null ? String(row.id) : "";
+  const fullName = row.fullName ?? row.full_name;
+  const name =
+    typeof fullName === "string" && fullName.trim()
+      ? fullName.trim()
+      : typeof row.name === "string"
+        ? row.name
+        : "";
+  return {
+    id,
+    name,
+    email: typeof row.email === "string" ? row.email : undefined,
+    phone: typeof row.phone === "string" ? row.phone : undefined,
+    keycloakUserId:
+      typeof row.keycloakUserId === "string"
+        ? row.keycloakUserId
+        : typeof row.keycloak_user_id === "string"
+          ? row.keycloak_user_id
+          : undefined,
+    dob: typeof meta.dob === "string" ? meta.dob : undefined,
+    gender: typeof meta.gender === "string" ? meta.gender : undefined,
+  };
+}
+
 function toAddress(row: BackendAddress): Address {
   return {
     id: row.id,
@@ -88,15 +120,23 @@ export const profileApi = {
   },
 
   getMe() {
-    return apiClient.get<UserProfile>(`${BASE}/me`);
+    return apiClient.get<Record<string, unknown>>(`${BASE}/me`).then(mapCustomerRow);
   },
 
-  updateMe(data: Partial<UserProfile>) {
-    return apiClient.patch<UserProfile>(`${BASE}/me`, data);
+  updateMe(data: Partial<UserProfile> & { dob?: string; gender?: string }) {
+    const body: Record<string, unknown> = {};
+    if (data.name !== undefined) body.fullName = data.name;
+    if (data.email !== undefined) body.email = data.email;
+    if (data.phone !== undefined) body.phone = data.phone;
+    if (data.dob !== undefined) body.dob = data.dob;
+    if (data.gender !== undefined) body.gender = data.gender;
+    return apiClient.patch<Record<string, unknown>>(`${BASE}/me`, body).then(mapCustomerRow);
   },
 
-  getCustomer(customerId: number) {
-    return apiClient.get<UserProfile>(`${BASE}/customers/${customerId}`);
+  getCustomer(customerId: string | number) {
+    return apiClient
+      .get<Record<string, unknown>>(`${BASE}/customers/${encodeURIComponent(String(customerId))}`)
+      .then(mapCustomerRow);
   },
 
   // Addresses

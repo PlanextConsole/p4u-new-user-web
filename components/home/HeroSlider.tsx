@@ -79,14 +79,14 @@ export default function HeroSlider() {
 
   if (slides.length === 0) {
     return (
-      <div className="mx-auto max-w-[1400px] px-3 sm:px-4 md:px-6 mt-2 sm:mt-3 md:mt-4">
+      <div className="w-full mx-auto max-w-[1400px] px-4 xl:px-6 mt-2 sm:mt-3 md:mt-4">
         <div className="h-[180px] xs:h-[200px] sm:h-[250px] md:h-[320px] lg:h-[400px] xl:h-[450px] bg-gray-100 rounded-lg sm:rounded-xl md:rounded-2xl animate-pulse" />
       </div>
     );
   }
 
   return (
-    <div className="relative w-full overflow-hidden mx-auto max-w-[1400px] px-3 sm:px-4 md:px-6 mt-2 sm:mt-3 md:mt-4">
+    <div className="relative w-full overflow-hidden mx-auto max-w-[1400px] px-4 xl:px-6 mt-2 sm:mt-3 md:mt-4">
       <div className="relative h-[180px] xs:h-[200px] sm:h-[250px] md:h-[320px] lg:h-[400px] xl:h-[450px] bg-gray-200 rounded-lg sm:rounded-xl md:rounded-2xl overflow-hidden">
  
         <div
@@ -103,7 +103,7 @@ export default function HeroSlider() {
                 alt={slide.alt}
                 fill
                 priority={index === 0}
-                className="object-cover rounded-lg sm:rounded-xl md:rounded-2xl"
+                className="object-cover object-top rounded-lg sm:rounded-xl md:rounded-2xl"
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 90vw, 1400px"
               />
             </div>

@@ -19,7 +19,6 @@ import shop from "../../images/home-header-icons/shop.png";
 import social from "../../images/home-header-icons/social.png";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { notifyNavigationIntent } from "@/lib/appLoadingBus";
 import { avatarLetterFromDisplayName } from "@/lib/resolveCustomerId";
 
 interface HeaderProps {
@@ -100,7 +99,6 @@ export default function Header({ onCartOpen }: HeaderProps) {
       onCartOpen();
     } else {
       sessionStorage.setItem("openCart", "1");
-      notifyNavigationIntent();
       router.push("/cart");
     }
   }
@@ -116,13 +114,11 @@ export default function Header({ onCartOpen }: HeaderProps) {
 function handleAuthSuccess(phone: string) {
   login(phone);
   setIsAuthOpen(false);
-  notifyNavigationIntent();
   router.push("/profile");
 }
 function handleLogout() {
   authLogout();
   setIsLoginDropdownOpen(false);
-  notifyNavigationIntent();
   router.push("/");
 }
 
@@ -455,7 +451,7 @@ function handleLogout() {
         </div>
  
         <nav className="w-full" style={{ background: "radial-gradient(ellipse at 60% 25%, #1a4a3a 0%, #0E221F 55%, #081812 100%)" }}>
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-[1400px] mx-auto px-4 xl:px-6">
             <div className="hidden min-[1200px]:block py-3">
               <div className="flex justify-between gap-4">
                 {navItems.map(({ image, icon: Icon, label, href }) => {

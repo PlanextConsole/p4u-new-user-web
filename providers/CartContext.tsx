@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
 import { commerceApi, type Cart, type CartItemApi } from "@/lib/api/commerce";
+import { resolveMediaUrl } from "@/lib/media";
 
 export interface CartItem {
   /** Server cart line id (UUID) when synced; otherwise same as productId for local-only rows */
@@ -79,18 +80,43 @@ export function CartProvider({ children }: { children: ReactNode }) {
             : typeof unit === "number"
               ? unit
               : 0;
+        const meta =
+          si.metadata && typeof si.metadata === "object"
+            ? (si.metadata as Record<string, unknown>)
+            : {};
+        const rawImg =
+          si.productImage ||
+          (typeof meta.productImage === "string" ? meta.productImage : null) ||
+          (typeof meta.imageUrl === "string" ? meta.imageUrl : null) ||
+          (typeof meta.thumbnailUrl === "string" ? meta.thumbnailUrl : null);
+        const resolvedImg = resolveMediaUrl(typeof rawImg === "string" ? rawImg : null);
+        const name =
+          si.productName ||
+          (typeof meta.productName === "string" ? meta.productName : null) ||
+          `Product #${productId}`;
+        const vendor =
+          (typeof meta.vendorName === "string" ? meta.vendorName : "") || "";
         return {
           id: si.id,
           productId,
-          name: si.productName ?? `Product #${productId}`,
+          name,
           price,
           originalPrice: price,
-          vendor: "",
+          vendor,
           vendorId: String(si.vendorId ?? ""),
           qty: si.quantity,
-          image: si.productImage,
+          image: resolvedImg || (typeof rawImg === "string" ? rawImg : undefined),
         };
       });
+
+    const cartLineMetadata = (i: CartItem) => {
+      const rawImg = i.imageUrl || i.image;
+      return {
+        productName: i.name,
+        vendorName: i.vendor,
+        ...(rawImg ? { productImage: rawImg } : {}),
+      };
+    };
 
     const linesFromLocal = (items: CartItem[]) =>
       items.map((i) => ({
@@ -98,6 +124,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         quantity: i.qty,
         unitPrice: i.price,
         vendorId: i.vendorId || null,
+        metadata: cartLineMetadata(i),
       }));
 
     if (localItems.length) {
@@ -145,7 +172,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
       return [...prev, { ...newItem, productId: pid, qty: 1 }];
     });
-    syncToServer(() => commerceApi.addCartItem(pid, 1, newItem.price, newItem.vendorId || null));
+    syncToServer(() =>
+      commerceApi.addCartItem(pid, 1, newItem.price, newItem.vendorId || null, {
+        productName: newItem.name,
+        vendorName: newItem.vendor,
+        ...((newItem.imageUrl || newItem.image)
+          ? { productImage: newItem.imageUrl || newItem.image }
+          : {}),
+      }),
+    );
   }, [syncToServer]);
 
   const removeFromCart = useCallback((id: string | number) => {

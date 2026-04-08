@@ -7,46 +7,62 @@ const BASE = "/api/v1/catalog";
 /* ------------------------------------------------------------------ */
 
 export interface Category {
-  id: number;
+  id: string;
   name: string;
-  parentId: number | null;
+  parentId: string | null;
+  thumbnailUrl?: string | null;
+  iconUrl?: string | null;
+  bannerUrls?: string[] | null;
+  /** Legacy */
   image?: string;
   isActive: boolean;
 }
 
 export interface Vendor {
-  id: number;
-  name: string;
+  id: string;
+  name?: string;
   businessName?: string;
   ownerName?: string;
   description?: string;
+  aboutBusiness?: string;
   logo?: string;
-  logoUrl?: string;
+  logoUrl?: string | null;
+  thumbnailUrl?: string | null;
+  bannerUrl?: string | null;
   banner?: string;
   rating?: number;
   isActive: boolean;
 }
 
 export interface Product {
-  id: number;
+  id: string;
   name: string;
   description?: string;
-  price: number;
+  shortDescription?: string | null;
+  longDescription?: string | null;
+  price: number | string;
+  sellPrice?: string;
+  finalPrice?: string;
   originalPrice?: number;
+  thumbnailUrl?: string | null;
+  bannerUrls?: string[] | null;
   image?: string;
-  vendorId: number;
-  categoryId?: number;
+  vendorId: string | null;
+  categoryId?: string | null;
+  serviceId?: string | null;
   isActive: boolean;
   metadata?: { imageUrl?: string; brand?: string; [key: string]: unknown };
 }
 
 export interface ServiceItem {
-  id: number;
+  id: string;
   name: string;
   description?: string;
-  price: number;
+  iconUrl?: string | null;
+  price: number | string;
   duration?: string;
-  vendorId: number;
+  vendorId?: string | null;
+  categoryId?: string | null;
   isActive: boolean;
   metadata?: { imageUrl?: string; price?: string; [key: string]: unknown };
 }

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Heart, Clock, Star } from "lucide-react";
 import Image from "next/image";
 import { catalogApi } from "@/lib/api/catalog";
+import { pickProductImage, pickServiceImage } from "@/lib/media";
 
 import lamp from "../../images/home-services/lamp.png";
 import kitchen from "../../images/home-services/kitchenapplication.png";
@@ -151,31 +152,48 @@ const FALLBACK_HOME_SERVICES = [
 const HOME_IMG_MAP: Record<number, any> = { 0: sofa, 1: sofa, 2: pot, 3: lamp, 4: kitchen, 5: coffee, 6: lamp, 7: flower };
 
 export default function ServiceComponents() {
-  const [mostBookedServices, setMostBookedServices] = useState<{ id: number; image: string | typeof socket; title: string; rating: number; reviews: number; price: number; originalPrice: number; duration: string; description: string; offer: string }[]>([]);
+  const [mostBookedServices, setMostBookedServices] = useState<{ id: string | number; image: string | typeof socket; title: string; rating: number; reviews: number; price: number; originalPrice: number; duration: string; description: string; offer: string }[]>([]);
   const [homeServices, setHomeServices] = useState<{ name: string; price: string; image: any }[]>([]);
 
   useEffect(() => {
-    catalogApi.getVendorProducts(0, { limit: 8, offset: 10 }).then((res) => {
-      setHomeServices(res.data.map((p, i) => ({
-        name: p.name,
-        price: p.price ? `₹${p.price.toLocaleString("en-IN")}` : "",
-        image: p.metadata?.imageUrl || p.image || sofa,
-      })));
-    }).catch(() => {});
+    catalogApi
+      .getVendors({ limit: 1 })
+      .then((vres) => {
+        const vid = vres.data?.[0]?.id;
+        if (!vid) return;
+        return catalogApi.getVendorProducts(vid, { limit: 8, offset: 0 });
+      })
+      .then((res) => {
+        if (!res?.data) return;
+        setHomeServices(
+          res.data.map((p) => ({
+            name: p.name,
+            price: p.price
+              ? `₹${Number((p as any).finalPrice ?? (p as any).sellPrice ?? p.price).toLocaleString("en-IN")}`
+              : "",
+            image: pickProductImage(p as any) || sofa,
+          })),
+        );
+      })
+      .catch(() => {});
 
     catalogApi.getServices({ limit: 10 }).then((res) => {
-      setMostBookedServices(res.data.map((s) => ({
-        id: s.id,
-        image: s.metadata?.imageUrl || socket,
-        title: s.name,
-        rating: 0,
-        reviews: 0,
-        price: s.price,
-        originalPrice: s.metadata?.originalPrice ? Number(s.metadata.originalPrice) : s.price,
-        duration: s.duration ?? "",
-        description: s.description ?? "",
-        offer: "",
-      })));
+      setMostBookedServices(
+        res.data.map((s) => ({
+          id: s.id,
+          image: pickServiceImage(s as any) || socket,
+          title: s.name,
+          rating: 0,
+          reviews: 0,
+          price: Number((s as any).metadata?.price ?? (s as any).price ?? 0),
+          originalPrice: (s as any).metadata?.originalPrice
+            ? Number((s as any).metadata.originalPrice)
+            : Number((s as any).metadata?.price ?? 0),
+          duration: String((s as any).metadata?.duration ?? ""),
+          description: s.description ?? "",
+          offer: "",
+        })),
+      );
     }).catch(() => {});
   }, []);
 

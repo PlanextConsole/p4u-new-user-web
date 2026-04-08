@@ -10,8 +10,8 @@ import {
 import { useRouter } from "next/navigation";
 import { TEAL_GRADIENT } from "./constants";
 import { catalogApi } from "@/lib/api/catalog";
-import { notifyNavigationIntent } from "@/lib/appLoadingBus";
 import { Loader2 } from "lucide-react";
+import { pickProductImage, pickVendorImage, resolveMediaUrl } from "@/lib/media";
 
 const TEAL_SOLID = "#0d9488";
  
@@ -36,6 +36,9 @@ type Product = {
   badge?: string;
   image?: string;
   imageUrl?: string;
+  thumbnailUrl?: string | null;
+  bannerUrls?: string[] | null;
+  metadata?: { imageUrl?: string; brand?: string };
   color?: string;
   colors?: Color[];
   category?: string;
@@ -58,6 +61,26 @@ function normalizeBanner(raw: Partial<Banner> | undefined): Banner {
     subtitle: raw.subtitle ?? DEFAULT_BANNER.subtitle,
   };
 }
+function VendorAvatar({ logo, logoColor }: { logo: string; logoColor?: string }) {
+  const isUrl = Boolean(
+    logo &&
+      (logo.startsWith("http") || logo.startsWith("/") || logo.startsWith("data:")),
+  );
+  const url = isUrl ? resolveMediaUrl(logo) || logo : null;
+  return (
+    <div
+      className="w-14 h-14 sm:w-[72px] sm:h-[72px] rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shadow-sm shrink-0 overflow-hidden"
+      style={{ background: logoColor ?? "#f97316", border: `2px solid ${logoColor ?? "#f97316"}55` }}
+    >
+      {url ? (
+        <img src={url} alt="" className="w-full h-full object-cover" />
+      ) : (
+        <span>{logo}</span>
+      )}
+    </div>
+  );
+}
+
 type Vendor = {
   name: string; logo: string; logoColor?: string; verified?: boolean;
   since: string; category: string; subCategory: string; delivery: string;
@@ -67,11 +90,14 @@ type Vendor = {
 function ProductImage({ product, vendorCategory }: { product: Product; vendorCategory: string }) {
   const [errored, setErrored] = useState(false);
 
-  const src = product.image?.startsWith("http")
-    ? product.image
-    : product.imageUrl?.startsWith("http")
-    ? product.imageUrl
-    : null;
+  const src =
+    pickProductImage({
+      thumbnailUrl: product.thumbnailUrl,
+      bannerUrls: product.bannerUrls,
+      image: product.image,
+      metadata: product.metadata,
+    }) ||
+    (product.imageUrl ? resolveMediaUrl(product.imageUrl) : null);
 
   const fallback =
     FALLBACK_IMAGES[product.category ?? vendorCategory] ?? FALLBACK_IMAGES.default;
@@ -199,10 +225,7 @@ function VendorInfoCard({ vendor }: { vendor: Vendor }) {
   return (
     <div className="bg-white rounded-2xl px-4 sm:px-5 py-4 shadow-sm border border-gray-100 mb-4">
       <div className="flex items-start gap-3 sm:gap-4">
-        <div className="w-14 h-14 sm:w-[72px] sm:h-[72px] rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shadow-sm shrink-0"
-          style={{ background: vendor.logoColor ?? "#f97316", border: `2px solid ${vendor.logoColor ?? "#f97316"}55` }}>
-          {vendor.logo}
-        </div>
+        <VendorAvatar logo={vendor.logo} logoColor={vendor.logoColor} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900 leading-tight">{vendor.name}</h2>
@@ -261,10 +284,7 @@ function VendorInfoCardDesktop({ vendor }: { vendor: Vendor }) {
   return (
     <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-gray-100 mb-4">
       <div className="flex items-center gap-4">
-        <div className="w-[72px] h-[72px] rounded-2xl flex items-center justify-center text-3xl shadow-sm shrink-0"
-          style={{ background: vendor.logoColor ?? "#f97316", border: `2px solid ${vendor.logoColor ?? "#f97316"}55` }}>
-          {vendor.logo}
-        </div>
+        <VendorAvatar logo={vendor.logo} logoColor={vendor.logoColor} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-semibold text-gray-900 leading-tight">{vendor.name}</h2>
@@ -342,7 +362,6 @@ function ProductCard({ product, onProductClick, vendorId, vendorName, vendorCate
 
   return (
     <div
-      data-loading-click
       className="bg-white rounded-2xl overflow-hidden flex flex-col cursor-pointer"
       style={{ boxShadow: "0 2px 16px rgba(0,0,0,0.10)", border: "1px solid #f0f0f0", transition: "box-shadow 0.2s, transform 0.2s" }}
       onClick={() => onProductClick(product)}
@@ -513,7 +532,7 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
         id: String(v.id),
         name: (v as any).businessName || v.name,
         logoColor: "#0d9488",
-        logo: v.logoUrl || v.logo || "🏪",
+        logo: pickVendorImage(v as any) || "🏪",
         verified: true,
         since: "2024",
         category: "General",
@@ -531,11 +550,14 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
           id: p.id,
           name: p.name,
           color: "",
-          price: p.price,
-          originalPrice: p.originalPrice ?? p.price,
+          price: Number((p as any).finalPrice ?? (p as any).sellPrice ?? p.price ?? 0),
+          originalPrice: p.originalPrice ?? Number((p as any).finalPrice ?? p.price ?? 0),
           rating: 0,
           reviews: 0,
-          image: p.metadata?.imageUrl || p.image || "",
+          thumbnailUrl: (p as any).thumbnailUrl,
+          bannerUrls: (p as any).bannerUrls,
+          image: pickProductImage(p as any) || "",
+          metadata: p.metadata,
           brand: p.metadata?.brand ?? "",
           badge: null,
           badgeColor: null,
@@ -691,7 +713,6 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
                     vendorName={vendor.name}
                     vendorCategory={vendor.category}
                     onProductClick={(p) => {
-                      notifyNavigationIntent();
                       router.push(`/shop/${vendorId}/${p.id}`);
                     }}
                   />

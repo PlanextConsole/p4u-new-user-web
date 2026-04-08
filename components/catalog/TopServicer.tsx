@@ -2,7 +2,8 @@
 import { ChevronLeft, ChevronRight, Star, MapPin, Clock } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import Image from "next/image";
-import { catalogApi } from "@/lib/api/catalog"; 
+import { catalogApi } from "@/lib/api/catalog";
+import { pickVendorImage } from "@/lib/media";
 import plumbing1 from "../../images/top-servicer/plumbing1.png";
 import plumbing2 from "../../images/top-servicer/plumbing2.png";
 import wedding1 from "../../images/top-servicer/wedding1.png";
@@ -62,7 +63,7 @@ export default function TopServicer() {
   useEffect(() => {
     catalogApi.getVendors({ limit: 8 }).then((res) => {
       setServices(res.data.map((v) => ({
-        image: v.logoUrl || v.logo || plumbing1,
+        image: pickVendorImage(v as any) || (v as any).logoUrl || (v as any).logo || plumbing1,
         badge: null,
         title: v.businessName || v.name,
         provider: v.description ?? v.businessName ?? v.name,
@@ -87,7 +88,7 @@ export default function TopServicer() {
 
   return (
     
- <div className=" mx-auto max-w-[1400px] px-3 sm:px-4 md:px-6 mt-8  "> 
+ <div className="w-full mx-auto max-w-[1400px] px-4 xl:px-6 mt-8"> 
        <div
   className="rounded-2xl sm:rounded-3xl overflow-hidden"
   style={{
@@ -112,7 +113,7 @@ export default function TopServicer() {
           <div className="px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 pb-4 sm:pb-6"> 
             <div className="flex items-center justify-between mb-4 sm:mb-6">
               <h2 className="text-xl sm:text-2xl lg:text-3xl text-white font-bold">
-                Top Servicer
+                Top Services
               </h2>
               <div className="flex gap-2 sm:gap-3">
                 <button

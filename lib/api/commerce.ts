@@ -17,6 +17,8 @@ export interface CartItemApi {
   quantity: number;
   vendorId?: string | null;
   lineTotal?: string;
+  /** Snapshot fields (product image, name, vendor) from cart / checkout */
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface Cart {
@@ -131,6 +133,7 @@ export const commerceApi = {
       quantity: number;
       unitPrice?: number;
       vendorId?: string | null;
+      metadata?: Record<string, unknown> | null;
     }[],
   ) {
     return apiClient.put<Cart>(`${BASE}/cart`, {
@@ -139,16 +142,24 @@ export const commerceApi = {
         quantity: i.quantity,
         ...(i.unitPrice != null ? { unitPrice: i.unitPrice } : {}),
         ...(i.vendorId != null && i.vendorId !== "" ? { vendorId: i.vendorId } : {}),
+        ...(i.metadata != null && Object.keys(i.metadata).length ? { metadata: i.metadata } : {}),
       })),
     });
   },
 
-  addCartItem(productId: string | number, quantity = 1, unitPrice?: number, vendorId?: string | null) {
+  addCartItem(
+    productId: string | number,
+    quantity = 1,
+    unitPrice?: number,
+    vendorId?: string | null,
+    metadata?: Record<string, unknown> | null,
+  ) {
     return apiClient.post<Cart>(`${BASE}/cart/items`, {
       productId: String(productId),
       quantity,
       ...(unitPrice != null ? { unitPrice } : {}),
       ...(vendorId != null && vendorId !== "" ? { vendorId } : {}),
+      ...(metadata != null && Object.keys(metadata).length ? { metadata } : {}),
     });
   },
 

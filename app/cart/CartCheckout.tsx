@@ -10,6 +10,7 @@ import { commerceApi } from "@/lib/api/commerce";
 import { paymentsApi } from "@/lib/api/payments";
 import type { ApiError } from "@/lib/api/client";
 import { useAppLoading } from "@/providers/AppLoadingProvider";
+import { resolveMediaUrl } from "@/lib/media";
 
 function messageFromApiError(e: unknown, fallback: string): string {
   if (typeof e === "object" && e !== null && "message" in e) {
@@ -171,7 +172,7 @@ export default function CartCheckout({
                      ? Math.round((1 - i.price / i.originalPrice) * 100)
                      : 0,
     delivery:      i.delivery || "Standard delivery",
-    image:         i.imageUrl || i.image || "",
+    image:         resolveMediaUrl(i.imageUrl || i.image) || i.imageUrl || i.image || "",
     qty:           i.qty,
   })), [cartItems]);
 

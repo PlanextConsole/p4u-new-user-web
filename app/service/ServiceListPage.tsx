@@ -6,6 +6,10 @@ import {
   Seller,
 } from "./serviceData";
 import { catalogApi } from "@/lib/api/catalog";
+import { pickCategoryImage, pickServiceImage } from "@/lib/media";
+import { CategorySidebarThumb } from "@/components/catalog/CategorySidebarThumb";
+
+type ServiceCategoryRow = { name: string; image: string | null };
  
 const IC = {
   Star:      ({ fill="#f59e0b",size=13 }:{ fill?:string;size?:number })=><svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={fill} strokeWidth="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
@@ -40,7 +44,7 @@ function Accordion({ label, isOpen, toggle, children }:{ label:string;isOpen:boo
 }
  
 interface SidebarProps {
-  categories:string[];
+  categories: ServiceCategoryRow[];
   selectedCats:string[]; toggleCat:(c:string)=>void;
   ratingFilter:number[]; toggleRating:(v:number)=>void;
   reviewFilter:string[]; toggleReview:(v:string)=>void;
@@ -62,12 +66,13 @@ function Sidebar({ categories,selectedCats,toggleCat,ratingFilter,toggleRating,r
         </button>
         {catsOpen&&(
           <div style={{ padding:"6px 0" }}>
-            {categories.map(cat=>{
-              const active=selectedCats.includes(cat);
+            {categories.map((row) => {
+              const active = selectedCats.includes(row.name);
               return (
-                <div key={cat} onClick={()=>toggleCat(cat)} style={{ display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"pointer",background:active?"#f0fdf4":"transparent",transition:"background .15s" }}>
-                  <Checkbox checked={active} onChange={()=>toggleCat(cat)}/>
-                  <span style={{ fontSize:12,color:active?TEAL:"#374151",fontWeight:active?600:400 }}>{cat}</span>
+                <div key={row.name} onClick={()=>toggleCat(row.name)} style={{ display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"pointer",background:active?"#f0fdf4":"transparent",transition:"background .15s" }}>
+                  <Checkbox checked={active} onChange={()=>toggleCat(row.name)}/>
+                  <CategorySidebarThumb imageUrl={row.image} label={row.name} size={28} />
+                  <span style={{ fontSize:12,color:active?TEAL:"#374151",fontWeight:active?600:400,flex:1,minWidth:0 }}>{row.name}</span>
                 </div>
               );
             })}
@@ -175,7 +180,7 @@ interface ServiceListPageProps {
 
 export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps) {
   const [sellers, setSellers] = useState<Seller[]>([]);
-  const [serviceCats, setServiceCats] = useState<string[]>([]);
+  const [serviceCatRows, setServiceCatRows] = useState<ServiceCategoryRow[]>([]);
   const [selectedCats,     setSelectedCats]     = useState<string[]>([]);
   const [ratingFilter,     setRatingFilter]     = useState<number[]>([]);
   const [reviewFilter,     setReviewFilter]     = useState<string[]>([]);
@@ -189,25 +194,27 @@ export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps
   useEffect(() => {
     catalogApi.getCategories({ limit: 50 }).then((res) => {
       const cats = (res as any)?.data ?? res;
-      const names = (Array.isArray(cats) ? cats : []).map((c: any) => c.name).filter(Boolean);
-      if (names.length) setServiceCats(names);
+      const rows: ServiceCategoryRow[] = (Array.isArray(cats) ? cats : [])
+        .map((c: any) => ({ name: c.name, image: pickCategoryImage(c) }))
+        .filter((r: ServiceCategoryRow) => Boolean(r.name));
+      if (rows.length) setServiceCatRows(rows);
     }).catch(() => {});
 
     catalogApi.getServices({ limit: 50 }).then((res) => {
       setSellers(res.data.map((s): Seller => ({
-        id: s.id,
+        id: typeof s.id === "number" ? s.id : Number.parseInt(String(s.id), 10) || 0,
         title: s.name,
-        image: s.metadata?.imageUrl ?? "",
+        image: pickServiceImage(s as any) ?? "",
         provider: s.description ?? s.name,
         description: s.description ?? "",
         rating: 0,
-        price: s.price,
-        duration: s.duration ?? "",
+        price: Number((s as any).metadata?.price ?? 0),
+        duration: String((s as any).metadata?.duration ?? ""),
         distance: "",
         category: "General",
         badge: null,
         hasOffer: false,
-        vendorId: String(s.vendorId),
+        vendorId: String((s as any).vendorId ?? ""),
       })));
     }).catch(() => {});
   }, []);
@@ -251,7 +258,7 @@ export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps
     return ps;
   };
 
-  const sidebarProps: SidebarProps = { categories:serviceCats,selectedCats,toggleCat,ratingFilter,toggleRating,reviewFilter,toggleReview,offerFilter,toggleOffer };
+  const sidebarProps: SidebarProps = { categories: serviceCatRows, selectedCats, toggleCat, ratingFilter, toggleRating, reviewFilter, toggleReview, offerFilter, toggleOffer };
 
   return (
     <div   >

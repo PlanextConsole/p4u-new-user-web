@@ -14,8 +14,12 @@ import {
   ITEMS_PER_PAGE,
 } from "./constants";
 import { catalogApi } from "@/lib/api/catalog";
-import { notifyNavigationIntent } from "@/lib/appLoadingBus";
 import { Loader2 } from "lucide-react";
+import { pickCategoryImage, pickVendorImage } from "@/lib/media";
+import { CategorySidebarThumb } from "@/components/catalog/CategorySidebarThumb";
+
+const SHOP_CARD_PLACEHOLDER =
+  "https://placehold.co/600x400/f3f4f6/64748b?text=Shop";
  
 
 type ShopItem = {
@@ -38,10 +42,14 @@ type ShopItem = {
 }
 
 function CardImage({ item }: { item: ShopItem }) {
+  const src =
+    typeof item.image === "string" && item.image.trim() !== ""
+      ? item.image
+      : SHOP_CARD_PLACEHOLDER;
   return (
     <div className="relative h-[150px] overflow-hidden bg-gray-100 group">
       <Image
-        src={item.image}
+        src={src}
         alt={item.title}
         fill
         className="object-cover transition-transform duration-500 group-hover:scale-105"
@@ -67,12 +75,10 @@ function ServiceCard({ service, onVendorSelect }: { service: ShopItem; onVendorS
   const router = useRouter();
   return (
     <div
-      data-loading-click
       className="bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 cursor-pointer flex flex-col border border-gray-100"
       onClick={() => {
         if (onVendorSelect) onVendorSelect(service.vendorId);
         else {
-          notifyNavigationIntent();
           router.push(`/shop/${service.vendorId}`);
         }
       }}
@@ -163,9 +169,11 @@ function Pagination({ current, total, onChange }: PaginationProps) {
     </div>
   );
 }  
+type ShopCategoryRow = { name: string; image: string | null };
+
 type SidebarContentProps = {
-  categories: string[]
-  selectedCats: string[]
+  categories: ShopCategoryRow[];
+  selectedCats: string[];
   toggleCat: (cat: string) => void
   offersOnly: boolean
   setOffersOnly: (v: boolean) => void
@@ -192,12 +200,12 @@ function SidebarContent({
           <ChevronRight className="w-4 h-4 text-gray-300" />
         </div>
         <div className="px-4 py-3 space-y-2.5">
-          {categories.map((cat) => {
-            const active = selectedCats.includes(cat);
+          {categories.map((row) => {
+            const active = selectedCats.includes(row.name);
             return (
-              <label key={cat} className="flex items-center gap-3 cursor-pointer">
+              <label key={row.name} className="flex items-center gap-3 cursor-pointer">
                 <div
-                  onClick={() => { toggleCat(cat); setPage(1); }}
+                  onClick={() => { toggleCat(row.name); setPage(1); }}
                   className="w-4 h-4 rounded border-2 flex items-center justify-center transition-all shrink-0"
                   style={
                     active
@@ -211,8 +219,9 @@ function SidebarContent({
                     </svg>
                   )}
                 </div>
-                <span className="text-sm font-medium" style={{ color: active ? "#059669" : "#4b5563" }}>
-                  {cat}
+                <CategorySidebarThumb imageUrl={row.image} label={row.name} size={32} />
+                <span className="text-sm font-medium flex-1 min-w-0" style={{ color: active ? "#059669" : "#4b5563" }}>
+                  {row.name}
                 </span>
               </label>
             );
@@ -289,7 +298,7 @@ function SidebarContent({
  
 export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorId: string) => void }) {
   const [sellers, setSellers] = useState<ShopItem[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<ShopCategoryRow[]>([]);
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
   const [loadingSellers, setLoadingSellers] = useState(true);
 
@@ -303,8 +312,13 @@ export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorI
   useEffect(() => {
     catalogApi.getCategories({ limit: 50 }).then((res) => {
       const cats = (res as any)?.data ?? res;
-      const names = (Array.isArray(cats) ? cats : []).map((c: any) => c.name).filter(Boolean);
-      if (names.length) setCategories(names);
+      const rows: ShopCategoryRow[] = (Array.isArray(cats) ? cats : [])
+        .map((c: any) => ({
+          name: c.name,
+          image: pickCategoryImage(c),
+        }))
+        .filter((r: ShopCategoryRow) => Boolean(r.name));
+      if (rows.length) setCategories(rows);
     }).catch(() => {});
 
     catalogApi.getVendors({ limit: 50 }).then((res) => {
@@ -321,7 +335,7 @@ export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorI
         pts: 100,
         distance: "1.0 km",
         badge: null,
-        image: v.logoUrl || v.logo || v.banner || "",
+        image: pickVendorImage(v as any) || (v as any).logoUrl || (v as any).logo || (v as any).banner || "",
         reviews: 0,
       })));
     }).catch(() => {}).finally(() => setLoadingSellers(false));
