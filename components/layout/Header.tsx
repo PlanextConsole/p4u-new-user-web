@@ -450,7 +450,7 @@ function handleLogout() {
           )}
         </div>
  
-        <nav className="w-full" style={{ background: "#009999" }}>
+<nav className="w-full" style={{ background: "#E8F6F6" }}>
           <div className="max-w-[1400px] mx-auto px-4 xl:px-6">
             <div className="hidden min-[1200px]:block py-3">
               <div className="flex justify-between gap-4">
@@ -459,12 +459,16 @@ function handleLogout() {
                   return (
                     <Link key={label} href={href}
                       className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 rounded-full whitespace-nowrap transition-all duration-200"
-                      style={{ border: active ? "1.5px solid #ffffff" : "1.5px solid rgba(255,255,255,0.45)", backgroundColor: active ? "rgba(255,255,255,0.15)" : "transparent" }}
-                      onMouseEnter={e => { if (!active) { e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.borderColor = "#ffffff"; } }}
-                      onMouseLeave={e => { if (!active) { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.45)"; } }}
-                    >
-                      {image ? <div className="w-5 h-5 relative flex-shrink-0"><Image src={image} alt={label} fill className="object-contain" /></div> : Icon && <Icon className="w-5 h-5 flex-shrink-0 text-white" strokeWidth={1.5} />}
-                      <span className="font-medium text-base text-white">{label}</span>
+                    style={{
+backgroundColor: active ? "#009999" : "#ffffff",
+  border: "none",
+  color: "#009999"
+}}
+                      >
+                      {image ? <div className="w-5 h-5 relative flex-shrink-0"><Image src={image} alt={label} fill className="object-contain" /></div> : Icon &&<Icon className="w-5 h-5 flex-shrink-0" style={{ color: active ? "#ffffff" : "#009999" }}/>}
+              <span className="font-medium text-base" style={{ color: active ? "#ffffff" : "#009999" }}>
+  {label}
+</span>
                       {active && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-white inline-block" />}
                     </Link>
                   );
@@ -480,9 +484,12 @@ function handleLogout() {
                     <Link key={label} href={href}
                       className="flex items-center justify-center gap-2 px-5 py-2 rounded-full whitespace-nowrap flex-shrink-0 transition-all duration-200"
                       style={{ border: active ? "1.5px solid #ffffff" : "1.5px solid rgba(255,255,255,0.45)", backgroundColor: active ? "rgba(255,255,255,0.15)" : "transparent" }}
-                      onMouseEnter={e => { if (!active) { e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.borderColor = "#ffffff"; } }}
-                      onMouseLeave={e => { if (!active) { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.45)"; } }}
-                    >
+                     onMouseEnter={(e) => {
+  if (!active) e.currentTarget.style.backgroundColor = "#E8F6F6";
+}}
+onMouseLeave={(e) => {
+  if (!active) e.currentTarget.style.backgroundColor = "#ffffff";
+}}    >
                       {image ? <div className="w-4 h-4 relative flex-shrink-0"><Image src={image} alt={label} fill className="object-contain" /></div> : Icon && <Icon className="w-4 h-4 flex-shrink-0 text-white" strokeWidth={1.5} />}
                       <span className="font-medium text-sm text-white">{label}</span>
                       {active && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-white inline-block" />}
