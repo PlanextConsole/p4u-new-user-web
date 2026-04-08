@@ -11,8 +11,8 @@ import {
 } from "lucide-react";
 import { socialApi } from "@/lib/api/social";
 
-const TEAL = "linear-gradient(135deg,#0d9488,#14b8a6)";
-const TEAL_SOLID = "#0d9488";
+const TEAL = "linear-gradient(135deg, #009999, #007777)";
+const TEAL_SOLID = "#009999";
 
 const FILTER_CSS: Record<string, string> = {
   Normal:    "none",
@@ -1746,7 +1746,7 @@ export default function SocialApp() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
+     <div className="max-w-[1300px] mx-auto flex h-screen overflow-hidden font-sans">
       {/* ── Desktop Sidebar ── */}
       <nav className="hidden md:flex flex-col w-16 lg:w-56 bg-white border-r border-gray-100 shrink-0 py-4 px-2 lg:px-3">
         {/* Logo */}

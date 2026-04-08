@@ -3,12 +3,12 @@
 @tailwind utilities;
 @import url('https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap');
 :root {
-  --primary-teal: #0E221F;
-  --primary-dark: #0d1b2a;
-  --navy-blue: #003366;
-  --hero-blue: #0a2540;
-  --light-teal: #e8f5f7;
-  --light-cyan: #d1f2f7;
+  --primary-teal: #009999;
+  --primary-dark: #007777;
+  --navy-blue: #006666;
+  --hero-blue: #008080;
+  --light-teal: #e0f7f7;
+  --light-cyan: #ccf2f2;
   --yellow-cream: #fef3c7;
   --salmon-peach: #fde4d9;
   --dark-gray: #2d3436;

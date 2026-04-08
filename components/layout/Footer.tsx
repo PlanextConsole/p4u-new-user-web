@@ -61,36 +61,35 @@ export default function Footer() {
     <>
       <footer
         className="w-full mt-2 sm:mt-3 md:mt-4"
-        style={{
-          background:
-            "radial-gradient(ellipse at 60% 25%, #1a4a3a 0%, #0E221F 55%, #081812 100%)",
-        }}
+     style={{
+  background: "#E8F6F6",
+}}
       >
         <div className="max-w-[1400px] mx-auto px-3 sm:px-4 md:px-6">
           <div className="pt-10 pb-2 px-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-2">
               {/* Info */}
               <div>
-                <h4 className="font-semibold mb-4 text-white">Info</h4>
-                <ul className="space-y-2 text-sm text-gray-300">
+                <h4 className="font-semibold mb-4 text-gray-900">Info</h4>
+                <ul className="space-y-2 text-sm text-gray-900">
                   {infoLinks.map((i, idx) => (
                     <li key={idx}>{i}</li>
                   ))}
                 </ul>
-                <p className="mt-3 text-sm text-gray-300 flex items-center gap-2">
+                <p className="mt-3 text-sm text-gray-900 flex items-center gap-2">
                   planext4uofficial@gmail.com <br />
                   +91-9787176868
                 </p>
               </div>
  
               <div>
-                <h4 className="font-semibold mb-4 text-white">Company</h4>
-                <ul className="space-y-2 text-sm text-gray-300">
+                <h4 className="font-semibold mb-4 text-gray-900">Company</h4>
+                <ul className="space-y-2 text-sm text-gray-900">
                   {companyLinks.map((i, idx) => (
                     <li key={idx}>
                       <a
                         href="#"
-                        className="hover:text-white transition-colors"
+                        className="hover:text-gray-900 transition-colors"
                       >
                         {i}
                       </a>
@@ -101,13 +100,13 @@ export default function Footer() {
 
               {/* Help */}
               <div>
-                <h4 className="font-semibold mb-4 text-white">Help</h4>
-                <ul className="space-y-2 text-sm text-gray-300">
+                <h4 className="font-semibold mb-4 text-gray-900">Help</h4>
+                <ul className="space-y-2 text-sm text-gray-900">
                   {helpLinks.map((i, idx) => (
                     <li key={idx}>
                       <a
                         href="#"
-                        className="hover:text-white transition-colors"
+                        className="hover:text-gray-900 transition-colors"
                       >
                         {i}
                       </a>
@@ -116,15 +115,15 @@ export default function Footer() {
                 </ul>
               </div> 
               <div>
-                <h4 className="font-semibold mb-4 text-white">
+                <h4 className="font-semibold mb-4 text-gray-900">
                   Consumer Policy
                 </h4>
-                <ul className="space-y-2 text-sm text-gray-300">
+                <ul className="space-y-2 text-sm text-gray-900">
                   {consumerPolicyLinks.map((i, idx) => (
                     <li key={idx}>
                       <a
                         href="#"
-                        className="hover:text-white transition-colors"
+                        className="hover:text-gray-900 transition-colors"
                       >
                         {i}
                       </a>
@@ -155,7 +154,7 @@ export default function Footer() {
 
             {/* Social */}
             <div className="mb-8">
-              <h4 className="font-semibold mb-3 text-white">Social</h4>
+              <h4 className="font-semibold mb-3 text-gray-900">Social</h4>
               <div className="flex flex-wrap gap-2">
                 {socialIcons.map((s, i) => {
                   const Icon = s.icon;
@@ -163,7 +162,7 @@ export default function Footer() {
                     <a
                       key={i}
                       href="#"
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-gray-300 transition-all duration-200"
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-gray-900 transition-all duration-200"
                       style={{ border: "1.5px solid rgba(255,255,255,0.35)" }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.backgroundColor =
@@ -194,7 +193,7 @@ export default function Footer() {
           <div className="px-4 py-5">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               <p className="text-sm text-gray-400 text-center md:text-left">
-                Planext4u Solutions India Private Limited Copyright © 2025. All
+                Planext4u Solutions India Private Limited Copyright © 2026. All
                 Rights Reserved.
               </p>
               <div className="hidden md:flex flex-wrap gap-3 justify-center">

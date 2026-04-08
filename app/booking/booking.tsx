@@ -17,9 +17,9 @@ type BookingStep =
   | "arrived";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const TEAL         = "#0d9488";
-const TEAL_DARK    = "#0E221F";
-const BTN_GRAD     = "radial-gradient(at 60% 25%, #1a4a3a 0%, #0E221F 55%, #081812 100%)";
+const TEAL         = "#009999";
+const TEAL_DARK    = "#007777"; // slightly darker for hover / borders
+const BTN_GRAD     = "#009999"; // removed gradient → plain color
 const PLATFORM_FEE = 10;
 
 const MONTHS = [
@@ -886,7 +886,7 @@ export default function Booking() {
             display: "flex", justifyContent: "center", zIndex: 1000
           }}>
             <button onClick={handleBookRide} style={{
-              width: "100%", maxWidth: 720, padding: "15px 0", background: "#111827",
+              width: "100%", maxWidth: 720, padding: "15px 0", background: "#009999",
               color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
               transition: "transform 0.1s",
             }}>Book Ride</button>

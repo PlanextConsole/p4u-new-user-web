@@ -285,7 +285,7 @@ export default function BestProducts() {
     >
     <div
       style={{
-        background: "radial-gradient(ellipse at 60% 25%, #1a4a3a 0%, #0E221F 55%, #081812 100%)",
+  background: "#009999",
         padding: "28px 24px 32px",
         maxWidth: "1400px",
      

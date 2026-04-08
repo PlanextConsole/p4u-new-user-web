@@ -20,11 +20,12 @@ function messageFromApiError(e: unknown, fallback: string): string {
   return fallback;
 }
  
-const PRIMARY_MID  = "#1a4a3a";
-const TEAL_ACCENT  = "#0d9488";
+const PRIMARY_MID  = "#009999";
+const TEAL_ACCENT  = "#00b3b3"; // lighter accent for highlights
 const PLATFORM_FEE = 50;
-const BTN_GRAD     = "radial-gradient(at 60% 25%, rgb(26,74,58) 0%, rgb(14,34,31) 55%, rgb(8,24,18) 100%)";
- 
+const BTN_GRAD     = "#009999"; // plain color (no gradient)
+
+
 function formatPrice(n: number): string {
   return "₹" + Number(n).toLocaleString("en-IN");
 }

@@ -92,21 +92,7 @@ export default function TopServicer() {
        <div
   className="rounded-2xl sm:rounded-3xl overflow-hidden"
   style={{
-    background: `
-      linear-gradient(
-        to bottom,
-        transparent 0%,
-        transparent 70%,
-        white 30%,
-        white 100%
-      ),
-      radial-gradient(
-        at 60% 25%,
-        rgb(26, 74, 58) 0%,
-        rgb(14, 34, 31) 55%,
-        rgb(8, 24, 18) 100%
-      )
-    `,
+   background: "#009999",
   }}
 >
 

@@ -141,7 +141,7 @@ function handleLogout() {
     return (
       <div
         className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-        style={{ background: "radial-gradient(at 60% 25%, #1a4a3a 0%, #0e221f 100%)" }}
+      style={{ background: "#009999" }}
         aria-hidden
       >
         {letter}
@@ -450,7 +450,7 @@ function handleLogout() {
           )}
         </div>
  
-        <nav className="w-full" style={{ background: "radial-gradient(ellipse at 60% 25%, #1a4a3a 0%, #0E221F 55%, #081812 100%)" }}>
+        <nav className="w-full" style={{ background: "#009999" }}>
           <div className="max-w-[1400px] mx-auto px-4 xl:px-6">
             <div className="hidden min-[1200px]:block py-3">
               <div className="flex justify-between gap-4">
