@@ -1,36 +1,42 @@
-'use client';
+"use client";
 
-import { ShoppingBag, Settings, Video, Calendar, FileText } from 'lucide-react';
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { ShoppingBag, Settings, Video, Calendar, FileText } from "lucide-react";
+
+const items = [
+  { href: "/shop", label: "Shop", icon: ShoppingBag },
+  { href: "/service", label: "Services", icon: Settings },
+  { href: "/socio", label: "Socio", icon: Video },
+  { href: "/booking", label: "Booking", icon: Calendar },
+  { href: "/classified", label: "Classified", icon: FileText },
+] as const;
 
 export default function Navigation() {
+  const pathname = usePathname();
+
   return (
     <nav className="w-full bg-[#e8f4f8]">
       <div className="max-w-[1400px] mx-auto px-6">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 py-3">
-          <button className="flex items-center justify-center gap-2 bg-white px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors w-full">
-            <ShoppingBag className="w-5 h-5 text-[#17a2b8] flex-shrink-0" strokeWidth={2} />
-            <span className="text-[#17a2b8] font-medium text-base">Shop</span>
-          </button>
-
-          <button className="flex items-center justify-center gap-2 bg-white px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors w-full">
-            <Settings className="w-5 h-5 text-[#17a2b8] flex-shrink-0" strokeWidth={2} />
-            <span className="text-[#17a2b8] font-medium text-base">Services</span>
-          </button>
-
-          <button className="flex items-center justify-center gap-2 bg-white px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors w-full">
-            <Video className="w-5 h-5 text-[#17a2b8] flex-shrink-0" strokeWidth={2} />
-            <span className="text-[#17a2b8] font-medium text-base">Socio</span>
-          </button>
-
-          <button className="flex items-center justify-center gap-2 bg-white px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors w-full">
-            <Calendar className="w-5 h-5 text-[#17a2b8] flex-shrink-0" strokeWidth={2} />
-            <span className="text-[#17a2b8] font-medium text-base">Booking</span>
-          </button>
-
-          <button className="flex items-center justify-center gap-2 bg-white px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors w-full">
-            <FileText className="w-5 h-5 text-[#17a2b8] flex-shrink-0" strokeWidth={2} />
-            <span className="text-[#17a2b8] font-medium text-base">Classified</span>
-          </button>
+          {items.map(({ href, label, icon: Icon }) => {
+            const active = pathname === href || pathname?.startsWith(`${href}/`);
+            return (
+              <Link
+                key={href}
+                href={href}
+                prefetch
+                className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors w-full border ${
+                  active
+                    ? "bg-[#17a2b8] border-[#17a2b8] text-white shadow-sm"
+                    : "bg-white border-transparent hover:bg-gray-50 text-[#17a2b8]"
+                }`}
+              >
+                <Icon className="w-5 h-5 flex-shrink-0" strokeWidth={2} />
+                <span className="font-medium text-base">{label}</span>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </nav>

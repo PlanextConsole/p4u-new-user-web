@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
 import { commerceApi, type Cart, type CartItemApi } from "@/lib/api/commerce";
 import { resolveMediaUrl } from "@/lib/media";
+import { setPostLoginAction } from "@/lib/postLoginAction";
 
 export interface CartItem {
   /** Server cart line id (UUID) when synced; otherwise same as productId for local-only rows */
@@ -162,6 +163,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addToCart = useCallback((newItem: Omit<CartItem, "qty">) => {
+    if (typeof window !== "undefined" && !localStorage.getItem("p4u_token")) {
+      setPostLoginAction({ type: "addToCart", item: newItem });
+      window.dispatchEvent(new CustomEvent("p4u-open-auth"));
+      return;
+    }
     const pid = newItem.productId ?? newItem.id;
     setItems((prev) => {
       const existing = prev.find((i) => String(i.productId ?? i.id) === String(pid));

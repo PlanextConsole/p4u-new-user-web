@@ -8,6 +8,7 @@ import ProductDetailPage from "@/app/shop/Productdetailpage";
 import { catalogApi } from "@/lib/api/catalog";
 import { commerceApi } from "@/lib/api/commerce";
 import { buildProductGalleryImages, pickProductImage, resolveMediaUrl } from "@/lib/media";
+import { resolveCatalogDisplayOriginal, resolveCatalogUnitPrice } from "@/lib/catalog/resolvePrice";
 
 export default function ProductRoute({
   params,
@@ -28,33 +29,9 @@ export default function ProductRoute({
       try {
         const p = await catalogApi.getProduct(params.productId);
 
-        // Fetch reviews from API
-        let reviewsList: Record<string, unknown>[] = [];
-        let reviewSummary = { averageRating: 0, totalReviews: 0, breakdown: {} as Record<number, number> };
-        try {
-          const [reviews, summary] = await Promise.all([
-            commerceApi.getReviews("product", p.id),
-            commerceApi.getReviewSummary("product", p.id),
-          ]);
-          reviewsList = reviews.map((r) => ({
-            id: r.id,
-            name: r.userId ? `User #${r.userId}` : "Anonymous",
-            verified: true,
-            rating: r.rating,
-            title: "",
-            comment: r.comment ?? "",
-            date: new Date(r.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
-            helpful: 0,
-            images: [],
-          }));
-          reviewSummary = summary;
-        } catch {
-          // Reviews not available — continue without them
-        }
-
-        const priceNum = Number(
-          (p as any).finalPrice ?? (p as any).sellPrice ?? p.price ?? 0,
-        );
+        const row = p as unknown as Record<string, unknown>;
+        const priceNum = resolveCatalogUnitPrice(row);
+        const origNum = resolveCatalogDisplayOriginal(row, priceNum);
         const mainImage =
           pickProductImage(p as any) ||
           resolveMediaUrl(String((p as any).metadata?.imageUrl || "")) ||
@@ -70,7 +47,7 @@ export default function ProductRoute({
           id: p.id,
           name: p.name,
           price: priceNum,
-          originalPrice: p.originalPrice ?? priceNum,
+          originalPrice: origNum,
           image: mainImage,
           imageUrl: mainImage,
           images: gallery.length ? gallery : mainImage ? [mainImage] : [],
@@ -79,15 +56,43 @@ export default function ProductRoute({
             (p as any).shortDescription ||
             p.description ||
             "",
-          rating: reviewSummary.averageRating || 0,
-          reviews: reviewSummary.totalReviews || 0,
-          ratingBreakdown: Object.keys(reviewSummary.breakdown).length ? reviewSummary.breakdown : undefined,
-          reviewsList: reviewsList.length ? reviewsList : undefined,
+          rating: 0,
+          reviews: 0,
           vendorId: p.vendorId,
           categoryId: p.categoryId,
           brand: p.metadata?.brand ?? "",
           specs: p.metadata ?? {},
         });
+
+        // Load reviews in background so route transition is not blocked by review APIs.
+        Promise.all([
+          commerceApi.getReviews("product", p.id),
+          commerceApi.getReviewSummary("product", p.id),
+        ])
+          .then(([reviews, summary]) => {
+            const reviewsList = reviews.map((r) => ({
+              id: r.id,
+              name: r.userId ? `User #${r.userId}` : "Anonymous",
+              verified: true,
+              rating: r.rating,
+              title: "",
+              comment: r.comment ?? "",
+              date: new Date(r.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+              helpful: 0,
+              images: [],
+            }));
+            setProduct((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                rating: summary.averageRating || 0,
+                reviews: summary.totalReviews || 0,
+                ratingBreakdown: Object.keys(summary.breakdown ?? {}).length ? summary.breakdown : undefined,
+                reviewsList: reviewsList.length ? reviewsList : undefined,
+              };
+            });
+          })
+          .catch(() => {});
       } catch {
         // Product not found via API
         setProduct(null);
@@ -109,7 +114,6 @@ export default function ProductRoute({
         <p className="text-gray-500">Product not found.</p>
         <button
           onClick={() => {
-            notifyNavigationIntent();
             router.push(`/shop/${params.vendorId}`);
           }}
           className="px-4 py-2 rounded-xl text-white bg-teal-600"

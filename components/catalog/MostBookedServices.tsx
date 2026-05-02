@@ -3,8 +3,10 @@
 import { useState, useEffect } from "react";
 import { Heart, Clock, Star } from "lucide-react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { catalogApi } from "@/lib/api/catalog";
 import { pickProductImage, pickServiceImage } from "@/lib/media";
+import { resolveCatalogUnitPrice } from "@/lib/catalog/resolvePrice";
 
 import lamp from "../../images/home-services/lamp.png";
 import kitchen from "../../images/home-services/kitchenapplication.png";
@@ -152,37 +154,46 @@ const FALLBACK_HOME_SERVICES = [
 const HOME_IMG_MAP: Record<number, any> = { 0: sofa, 1: sofa, 2: pot, 3: lamp, 4: kitchen, 5: coffee, 6: lamp, 7: flower };
 
 export default function ServiceComponents() {
+  const router = useRouter();
   const [mostBookedServices, setMostBookedServices] = useState<{ id: string | number; image: string | typeof socket; title: string; rating: number; reviews: number; price: number; originalPrice: number; duration: string; description: string; offer: string }[]>([]);
-  const [homeServices, setHomeServices] = useState<{ name: string; price: string; image: any }[]>([]);
+  const [homeServices, setHomeServices] = useState<{ id: string; vendorId: string; name: string; price: string; image: any }[]>([]);
 
   useEffect(() => {
     catalogApi
-      .getVendors({ limit: 1 })
-      .then((vres) => {
-        const vid = vres.data?.[0]?.id;
-        if (!vid) return;
-        return catalogApi.getVendorProducts(vid, { limit: 8, offset: 0 });
-      })
+      .browseProducts({ limit: 8, offset: 0 })
       .then((res) => {
-        if (!res?.data) return;
+        if (!res?.data?.length) return;
         setHomeServices(
-          res.data.map((p) => ({
-            name: p.name,
-            price: p.price
-              ? `₹${Number((p as any).finalPrice ?? (p as any).sellPrice ?? p.price).toLocaleString("en-IN")}`
-              : "",
-            image: pickProductImage(p as any) || sofa,
-          })),
+          res.data.map((p, idx) => {
+            const unit = resolveCatalogUnitPrice(p as unknown as Record<string, unknown>);
+            return {
+              id: String(p.id ?? idx),
+              vendorId: String(p.vendorId ?? ""),
+              name: p.name,
+              price: unit > 0 ? `₹${unit.toLocaleString("en-IN")}` : "",
+              image: pickProductImage(p as any) || HOME_IMG_MAP[idx % 8] || sofa,
+            };
+          }),
         );
       })
-      .catch(() => {});
+      .catch(() => {
+        setHomeServices(
+          FALLBACK_HOME_SERVICES.map((s, idx) => ({
+            id: `fallback-${idx}`,
+            vendorId: "",
+            name: s.name,
+            price: s.price,
+            image: s.image,
+          })),
+        );
+      });
 
     catalogApi.getServices({ limit: 10 }).then((res) => {
       setMostBookedServices(
-        res.data.map((s) => ({
+        (res.data?.length ? res.data : FALLBACK_SERVICES as any[]).map((s) => ({
           id: s.id,
           image: pickServiceImage(s as any) || socket,
-          title: s.name,
+          title: s.name || "Service",
           rating: 0,
           reviews: 0,
           price: Number((s as any).metadata?.price ?? (s as any).price ?? 0),
@@ -194,7 +205,9 @@ export default function ServiceComponents() {
           offer: "",
         })),
       );
-    }).catch(() => {});
+    }).catch(() => {
+      setMostBookedServices(FALLBACK_SERVICES);
+    });
   }, []);
 
   return (
@@ -261,8 +274,11 @@ export default function ServiceComponents() {
                     {service.offer}
                   </span>
                 </div> 
-                <button className="w-full py-1.5 lg:py-2 border border-teal-500 text-teal-600 rounded text-xs lg:text-sm font-medium hover:bg-teal-50 transition-colors">
-                  Add to cart
+                <button
+                  className="w-full py-1.5 lg:py-2 border border-teal-500 text-teal-600 rounded text-xs lg:text-sm font-medium hover:bg-teal-50 transition-colors"
+                  onClick={() => router.push("/service")}
+                >
+                  Book now
                 </button>
               </div>
             </div>
@@ -293,10 +309,17 @@ export default function ServiceComponents() {
             </div>
           </div>
  
-          {homeServices.map((service, index) => (
+          {homeServices.map((service) => (
             <div
-              key={index}
-              className="bg-white rounded-lg p-3 sm:p-4 lg:p-4 hover:shadow-md transition-shadow border border-gray-200"
+              key={service.id}
+              onClick={() => {
+                if (service.vendorId) {
+                  router.push(`/shop/${service.vendorId}/${service.id}`);
+                } else {
+                  router.push("/shop");
+                }
+              }}
+              className="bg-white rounded-lg p-3 sm:p-4 lg:p-4 hover:shadow-md transition-shadow border border-gray-200 cursor-pointer min-h-[170px]"
             >
               <div className="flex flex-col h-full">
                 <h3 className="font-medium text-sm lg:text-base text-left mb-1">

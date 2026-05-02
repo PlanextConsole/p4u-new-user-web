@@ -12,7 +12,7 @@ import { pickProductImage, resolveMediaUrl } from "@/lib/media";
 import { resolveCustomerIdFromAccessToken } from "@/lib/resolveCustomerId";
 type ActivePage =
   | "profile" | "saved-addresses" | "select-language" | "notification"
-  | "your-orders" | "reviews-ratings" | "your-favourites" | "refer-earn"
+  | "your-orders" | "my-bookings" | "reviews-ratings" | "your-favourites" | "refer-earn"
   | "reward-points" | "become-vendor" | "account-privacy" | "logout";
 
 interface SidebarItem { id: ActivePage; label: string; icon: React.ReactNode; } 
@@ -82,6 +82,7 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
   { id: "select-language", label: "Select Language", icon: <IcGlobe /> },
   { id: "notification", label: "Notifications", icon: <IcBell /> },
   { id: "your-orders", label: "Your Orders", icon: <IcPackage /> },
+  { id: "my-bookings", label: "My Bookings", icon: <IcCalendar /> },
   { id: "reviews-ratings", label: "Reviews & Ratings", icon: <IcStar /> },
   { id: "your-favourites", label: "Your Favorites", icon: <IcHeart /> },
   { id: "refer-earn", label: "Refer & Earn", icon: <IcGift /> },
@@ -961,7 +962,7 @@ function PageYourOrders() {
 
         const thumbByProductId: Record<string, string | null> = {};
         await Promise.all(
-          [...needIds].map(async (pid) => {
+          Array.from(needIds).map(async (pid) => {
             try {
               const p = await catalogApi.getProduct(pid);
               thumbByProductId[pid] = pickProductImage(p as Parameters<typeof pickProductImage>[0]);
@@ -1015,6 +1016,126 @@ function PageYourOrders() {
       <SectionTitle>My Orders</SectionTitle>
       <TabBar<OrderTab> tabs={["Shop", "Services", "Booking"]} active={tab} onSelect={setTab} />
       <div className="space-y-3">{data.map((o, i) => <OrderCard key={i} item={o} />)}</div>
+    </div>
+  );
+}
+
+function PageMyBookings() {
+  const [bookings, setBookings] = useState<
+    Array<{ id: string; date?: string; slot?: string; timeSlot?: string; status: string }>
+  >([]);
+  const [vendorNames, setVendorNames] = useState<Record<string, string>>({});
+  const [serviceNames, setServiceNames] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    commerceApi
+      .getBookings({ limit: 50 })
+      .then(async (res) => {
+        const rows = res.data ?? [];
+        setBookings(rows);
+        const vendorIds = [...new Set(rows.map((b: any) => String(b.vendorId || "").trim()).filter(Boolean))];
+        const serviceIds = [...new Set(rows.map((b: any) => String(b.serviceId || "").trim()).filter(Boolean))];
+        const [vendors, services] = await Promise.all([
+          Promise.all(
+            vendorIds.map(async (id) => {
+              try {
+                const v = await catalogApi.getVendor(id);
+                return [id, v?.businessName || v?.name || "Service Vendor"] as const;
+              } catch {
+                return [id, "Service Vendor"] as const;
+              }
+            }),
+          ),
+          Promise.all(
+            serviceIds.map(async (id) => {
+              try {
+                const s = await catalogApi.getService(id);
+                return [id, s?.name || "Service"] as const;
+              } catch {
+                return [id, "Service"] as const;
+              }
+            }),
+          ),
+        ]);
+        setVendorNames(Object.fromEntries(vendors));
+        setServiceNames(Object.fromEntries(services));
+      })
+      .catch(() => setError("Unable to load bookings"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const cancelBooking = async (id: string) => {
+    try {
+      const updated = await commerceApi.cancelBooking(id);
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === id
+            ? { ...b, status: String(updated.status ?? b.status), date: updated.date ?? b.date, slot: updated.slot ?? b.slot }
+            : b,
+        ),
+      );
+    } catch {
+      alert("Failed to cancel booking");
+    }
+  };
+
+  return (
+    <div className="p-5 sm:p-6">
+      <SectionTitle>My Bookings</SectionTitle>
+
+      {loading && <p className="text-sm text-slate-500 py-6">Loading bookings…</p>}
+      {error && <p className="text-sm text-red-500 py-4">{error}</p>}
+      {!loading && !error && bookings.length === 0 && (
+        <p className="text-sm text-slate-500 py-6 text-center border border-dashed border-slate-200 rounded-xl">
+          No bookings yet.
+        </p>
+      )}
+
+      <div className="space-y-3">
+        {bookings.map((b) => {
+          const st = String(b.status || "").toLowerCase();
+          const statusClass =
+            st === "approved" || st === "confirmed"
+              ? "bg-green-100 text-green-700"
+              : st === "rejected" || st === "cancelled"
+              ? "bg-red-100 text-red-700"
+              : "bg-yellow-100 text-yellow-700";
+          return (
+            <div key={b.id} className="p-4 rounded-xl border border-slate-100 bg-white flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-800">
+                  {serviceNames[String((b as any).serviceId || "").trim()] || "Service Booking"}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Vendor: {vendorNames[String((b as any).vendorId || "").trim()] || "Service Vendor"}
+                </p>
+                <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                  <span className="flex items-center gap-1">
+                    <IcCalendar s={12} />
+                    {b.date ? new Date(b.date).toLocaleDateString() : "—"}
+                  </span>
+                  <span>{b.slot || b.timeSlot || "—"}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`text-xs px-2 py-0.5 rounded-full ${statusClass}`}>{st || "pending"}</span>
+                <span className="text-[10px] text-slate-400">#{String(b.id).slice(0, 8)}</span>
+                {st !== "cancelled" && st !== "rejected" && (
+                  <button
+                    type="button"
+                    className="text-xs text-red-500 hover:underline"
+                    onClick={() => cancelBooking(b.id)}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1457,6 +1578,78 @@ function PageBecomeVendor() {
   );
 }
   
+function ChangePasswordBlock() {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+
+  async function submit() {
+    if (!currentPassword || !newPassword) {
+      setMessage({ kind: "error", text: "Both current and new password are required." });
+      return;
+    }
+    if (newPassword.length < 6) {
+      setMessage({ kind: "error", text: "New password must be at least 6 characters." });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setMessage({ kind: "error", text: "New password and confirmation do not match." });
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    try {
+      const { authApi } = await import("@/lib/api/auth");
+      await authApi.changePassword(currentPassword, newPassword);
+      setMessage({ kind: "success", text: "Password changed successfully." });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (e) {
+      setMessage({ kind: "error", text: (e as { message?: string })?.message || "Could not change password." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mb-6">
+      <SectionTitle>Change Password</SectionTitle>
+      <div className="grid gap-3 sm:grid-cols-2 mb-3">
+        <input
+          type="password"
+          placeholder="Current password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm sm:col-span-2"
+        />
+        <input
+          type="password"
+          placeholder="New password (min 6 chars)"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"
+        />
+        <input
+          type="password"
+          placeholder="Confirm new password"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"
+        />
+      </div>
+      {message && (
+        <p className={`text-xs mb-3 ${message.kind === "success" ? "text-emerald-600" : "text-red-500"}`}>
+          {message.text}
+        </p>
+      )}
+      <PrimaryBtn onClick={submit} disabled={saving}>{saving ? "Saving…" : "Update Password"}</PrimaryBtn>
+    </div>
+  );
+}
+
 function PageAccountPrivacy() {
   const [deleteConsent, setDeleteConsent] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -1475,6 +1668,7 @@ function PageAccountPrivacy() {
           </div>
         </Modal>
       )}
+      <ChangePasswordBlock />
       <SectionTitle>Account Privacy</SectionTitle>
       <div className="text-sm text-slate-600 mb-5 space-y-3 leading-relaxed">
         <p>At Planext4u, we are committed to protecting the privacy and security of our users&apos; personal information.</p>
@@ -1580,6 +1774,18 @@ export default function ProfilePages() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null); 
 const { isLoggedIn } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const applyHash = () => {
+      const h = window.location.hash.replace(/^#/, "").toLowerCase();
+      if (h === "my-bookings" || h === "bookings") setActivePage("my-bookings");
+    };
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+    return () => window.removeEventListener("hashchange", applyHash);
+  }, []);
+
   const renderPage = (): React.ReactNode => {
     switch (activePage) {
       case "profile": return <PageProfile />;
@@ -1587,6 +1793,7 @@ const { isLoggedIn } = useAuth();
       case "select-language": return <PageSelectLanguage />;
       case "notification": return <PageNotification />;
       case "your-orders": return <PageYourOrders />;
+      case "my-bookings": return <PageMyBookings />;
       case "reviews-ratings": return <PageReviews />;
       case "your-favourites": return <PageFavourites />;
       case "refer-earn": return <PageReferEarn />;

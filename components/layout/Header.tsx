@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { useCart } from "@/providers/CartContext";
+import { takePostLoginAction } from "@/lib/postLoginAction";
 import { useAuth } from "@/providers/AuthContext";
 import AuthModal from "@/components/auth/Authmodal";
 import {
@@ -37,7 +38,7 @@ export default function Header({ onCartOpen }: HeaderProps) {
 
   const searchRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-  const { totalItems } = useCart();
+  const { totalItems, addToCart } = useCart();
 
   const navItems = [
     { image: shop,       label: "Shop",          href: "/shop"           },
@@ -66,6 +67,7 @@ export default function Header({ onCartOpen }: HeaderProps) {
 
   const loginMenuItems = [
     { icon: User,    label: "My Profile",     href: "/profile"       },
+    { icon: Calendar, label: "My Bookings",   href: "/profile#my-bookings" },
     { icon: Package, label: "Orders",         href: "/orders"        },
     { icon: Heart,   label: "Wishlist (1)",   href: "/wishlist"      },
     { icon: Gift,    label: "Rewards",        href: "/rewards"       },
@@ -94,6 +96,14 @@ export default function Header({ onCartOpen }: HeaderProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  useEffect(() => {
+    function openAuthFromApp() {
+      setIsAuthOpen(true);
+    }
+    window.addEventListener("p4u-open-auth", openAuthFromApp);
+    return () => window.removeEventListener("p4u-open-auth", openAuthFromApp);
+  }, []);
+
   function handleCartClick() {
     if (onCartOpen) {
       onCartOpen();
@@ -111,16 +121,25 @@ export default function Header({ onCartOpen }: HeaderProps) {
     }
   }
 
-function handleAuthSuccess(phone: string) {
-  login(phone);
-  setIsAuthOpen(false);
-  router.push("/profile");
-}
-function handleLogout() {
-  authLogout();
-  setIsLoginDropdownOpen(false);
-  router.push("/");
-}
+  function handleAuthSuccess(phone: string) {
+    login(phone);
+    setIsAuthOpen(false);
+    const pending = takePostLoginAction();
+    if (pending?.type === "addToCart") {
+      queueMicrotask(() => addToCart(pending.item));
+      return;
+    }
+    if (pending?.type === "navigate") {
+      router.push(pending.href);
+      return;
+    }
+  }
+
+  function handleLogout() {
+    authLogout();
+    setIsLoginDropdownOpen(false);
+    router.push("/");
+  }
 
   function CartBadge({ size = "sm" }: { size?: "sm" | "lg" }) {
     const dim = size === "lg" ? "w-5 h-5" : "w-4 h-4";
@@ -234,7 +253,7 @@ function handleLogout() {
         </div>
       )}
 
-      <header className="w-full bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+      <header className="w-full bg-white border-b border-gray-200 sticky top-0 z-[1000] shadow-sm pointer-events-auto">
  
         <div className="hidden min-[1200px]:block">
           <div className="max-w-[1400px] mx-auto px-4 xl:px-6 py-3">
@@ -450,7 +469,7 @@ function handleLogout() {
           )}
         </div>
  
-<nav className="w-full" style={{ background: "#E8F6F6" }}>
+<nav className="w-full relative z-[1001] pointer-events-auto" style={{ background: "#E8F6F6" }}>
           <div className="max-w-[1400px] mx-auto px-4 xl:px-6">
             <div className="hidden min-[1200px]:block py-3">
               <div className="flex justify-between gap-4">

@@ -35,4 +35,17 @@ export const authApi = {
   logout(refreshToken: string) {
     return apiClient.post<{ message: string }>(`${BASE}/logout`, { refreshToken });
   },
+
+  /**
+   * Triggers the Keycloak "reset password" email. Backend always responds 200
+   * with a generic message to prevent email enumeration.
+   */
+  forgotPassword(email: string) {
+    return apiClient.post<{ message: string }>(`${BASE}/public/forgot-password`, { email });
+  },
+
+  /** Authenticated password change. Requires valid access token. */
+  changePassword(currentPassword: string, newPassword: string) {
+    return apiClient.post<{ message: string }>(`${BASE}/change-password`, { currentPassword, newPassword });
+  },
 };

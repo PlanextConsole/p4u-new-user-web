@@ -1,11 +1,13 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Star, Heart, ShoppingCart, Minus, Plus, ChevronLeft,
   ChevronRight, Shield, Truck, RotateCcw, CheckCircle,
   ThumbsUp, ChevronDown, ChevronUp, Tag, Zap
 } from "lucide-react";
 import { useCart } from "@/providers/CartContext";
+import { useAuth } from "@/providers/AuthContext";
 import { buildProductGalleryImages, resolveMediaUrl } from "@/lib/media";
 
 function enrich(p) {
@@ -160,8 +162,10 @@ function Stars({ rating, size = 12 }) {
 }
 
 export default function ProductDetailPage({ product: rawProduct, onBack }) {
+  const router = useRouter();
   const product = useMemo(() => enrich(rawProduct), [rawProduct]);
   const { addToCart } = useCart();
+  const { isLoggedIn } = useAuth();
 
   const [mainImg, setMainImg] = useState(0);
   const [selectedColor, setSelectedColor] = useState(product.colors?.[0] || null);
@@ -206,6 +210,15 @@ export default function ProductDetailPage({ product: rawProduct, onBack }) {
     });
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2500);
+  }
+
+  function handleBuyNow() {
+    handleAddToCart();
+    if (!isLoggedIn) {
+      window.dispatchEvent(new Event("p4u-open-auth"));
+      return;
+    }
+    router.push("/checkout");
   }
 
   const specEntries = specs ? Object.entries(specs) : [];
@@ -316,6 +329,7 @@ export default function ProductDetailPage({ product: rawProduct, onBack }) {
                   ADD TO CART
                 </button>
                 <button
+                  onClick={handleBuyNow}
                   style={{
                     flex: 1, height: 48, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                     background: "#fb641b", border: "none", borderRadius: 2, cursor: "pointer",

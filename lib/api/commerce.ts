@@ -63,6 +63,7 @@ export interface CouponValidation {
 /** Normalized for UI; backend uses bookingDate / timeSlot and uuid id */
 export interface Booking {
   id: string;
+  customerId?: string;
   vendorId: string;
   serviceId?: string | null;
   bookingDate: string;
@@ -102,6 +103,7 @@ function normalizeBooking(row: Record<string, unknown>): Booking {
   const id = String(row.id ?? "");
   return {
     id,
+    customerId: row.customerId != null ? String(row.customerId) : undefined,
     vendorId: String(row.vendorId ?? row.vendor_id ?? ""),
     serviceId: (row.serviceId ?? row.service_id) as string | null | undefined,
     bookingDate,
@@ -267,6 +269,29 @@ export const commerceApi = {
       });
   },
 
+  getVendorBookings(params?: { limit?: number; offset?: number; status?: string }) {
+    return apiClient
+      .get<{ items?: Record<string, unknown>[]; total?: number; limit?: number; offset?: number }>(
+        `${BASE}/bookings/vendor`,
+        params as Record<string, string | number | boolean>,
+      )
+      .then((payload) => {
+        const items = (payload.items ?? []).map((row) => normalizeBooking(row));
+        return {
+          data: items,
+          total: payload.total ?? items.length,
+          limit: payload.limit ?? 20,
+          offset: payload.offset ?? 0,
+        } satisfies PaginatedResponse<Booking>;
+      });
+  },
+
+  updateBookingStatus(bookingId: string | number, status: "approved" | "rejected") {
+    return apiClient
+      .patch<Record<string, unknown>>(`${BASE}/bookings/${bookingId}/status`, { status })
+      .then((row) => normalizeBooking(row));
+  },
+
   getBooking(bookingId: string | number) {
     return apiClient.get<Record<string, unknown>>(`${BASE}/bookings/${bookingId}`).then((row) => normalizeBooking(row));
   },
@@ -281,8 +306,12 @@ export const commerceApi = {
         vendorId?: string;
         date?: string;
         slots?: AvailableSlot[];
-      }>(`${BASE}/bookings/available-slots`, { vendorId, date })
-      .then((body) => body.slots ?? []);
+      } | AvailableSlot[]>(`${BASE}/bookings/available-slots`, { vendorId, date })
+      .then((body) => {
+        if (Array.isArray(body)) return body;
+        if (body && typeof body === "object" && Array.isArray(body.slots)) return body.slots;
+        return [];
+      });
   },
 
   // Reviews

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import Image from "next/image";
 import {
   Star, Clock, ChevronLeft, ChevronRight, Search, X,
-  Heart, ShoppingBag, Filter, Tag,
+  ShoppingBag, Filter, Tag,
   ArrowUp,
   ArrowDown,
 } from "lucide-react";
@@ -13,17 +13,16 @@ import {
   TEAL_GRADIENT,
   ITEMS_PER_PAGE,
 } from "./constants";
-import { catalogApi } from "@/lib/api/catalog";
+import { catalogApi, type Category } from "@/lib/api/catalog";
 import { Loader2 } from "lucide-react";
-import { pickCategoryImage, pickVendorImage } from "@/lib/media";
-import { CategorySidebarThumb } from "@/components/catalog/CategorySidebarThumb";
+import { resolveCatalogUnitPrice } from "@/lib/catalog/resolvePrice";
 
 const SHOP_CARD_PLACEHOLDER =
   "https://placehold.co/600x400/f3f4f6/64748b?text=Shop";
  
 
 type ShopItem = {
-  id: number
+  id: string | number
   title: string
   image: string
   distance: string
@@ -71,44 +70,65 @@ function CardImage({ item }: { item: ShopItem }) {
 }
  
 
-function ServiceCard({ service, onVendorSelect }: { service: ShopItem; onVendorSelect?: (vendorId: string) => void }) {
+function ProductBrowseCard({ item, onVendorSelect }: { item: ShopItem; onVendorSelect?: (vendorId: string) => void }) {
   const router = useRouter();
+  const vid = String(item.vendorId || "").trim();
+  const canOpen = Boolean(vid && item.id);
+  const pid = String(item.id ?? "").trim();
   return (
     <div
-      className="bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5 cursor-pointer flex flex-col border border-gray-100"
+      className={`bg-white rounded-2xl overflow-hidden shadow-md transition-all duration-300 flex flex-col border border-gray-100 ${
+        canOpen ? "hover:shadow-xl hover:-translate-y-0.5 cursor-pointer" : "opacity-90 cursor-not-allowed"
+      }`}
       onClick={() => {
-        if (onVendorSelect) onVendorSelect(service.vendorId);
+        if (!canOpen) return;
+        if (onVendorSelect) onVendorSelect(vid);
         else {
-          router.push(`/shop/${service.vendorId}`);
+          router.push(`/shop/${vid}/${item.id}`);
+        }
+      }}
+      onMouseEnter={() => {
+        if (!canOpen) return;
+        if (onVendorSelect) {
+          router.prefetch(`/shop/${vid}`);
+          void Promise.all([
+            catalogApi.prefetchVendor(vid),
+            catalogApi.prefetchVendorProducts(vid, { limit: 50, offset: 0 }),
+          ]);
+          return;
+        }
+        if (pid) {
+          router.prefetch(`/shop/${vid}/${pid}`);
+          void catalogApi.prefetchProduct(pid);
         }
       }}
     >
-      <CardImage item={service} />
+      <CardImage item={item} />
       <div className="p-3.5 flex flex-col flex-1">
         <div className="flex items-start justify-between mb-1.5">
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-bold text-gray-900 leading-tight truncate">{service.title}</h3>
-            <p className="text-[10px] text-gray-400 mt-0.5">{service.number}</p>
+            <h3 className="text-sm font-bold text-gray-900 leading-tight truncate">{item.title}</h3>
+            <p className="text-[10px] text-gray-400 mt-0.5">{item.number}</p>
           </div>
           <div className="flex items-center gap-0.5 ml-2 shrink-0 bg-amber-50 px-1.5 py-0.5 rounded-full">
             <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-            <span className="text-xs font-bold text-amber-600">{service.rating}</span>
+            <span className="text-xs font-bold text-amber-600">{item.rating}</span>
           </div>
         </div>
-        <p className="text-xs text-gray-500 mb-2.5 truncate">{service.provider}</p>
+        <p className="text-xs text-gray-500 mb-2.5 truncate">{item.provider}</p>
         <div className="flex items-center gap-3 mb-2">
           <div className="flex items-center gap-1">
             <ShoppingBag className="w-3 h-3 text-emerald-600" />
-            <span className="text-xs font-semibold text-gray-700">Min ₹{service.price}</span>
+            <span className="text-xs font-semibold text-gray-700">₹{item.price}</span>
           </div>
           <div className="flex items-center gap-1">
             <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-            <span className="text-xs font-semibold text-amber-600">{service.pts} pts</span>
+            <span className="text-xs font-semibold text-amber-600">{item.pts} pts</span>
           </div>
         </div>
         <div className="flex items-center gap-1">
           <Clock className="w-3 h-3 text-blue-500 shrink-0" />
-          <span className="text-xs text-gray-500">Delivery in {service.duration}</span>
+          <span className="text-xs text-gray-500">{item.duration}</span>
         </div>
       </div>
     </div>
@@ -169,12 +189,7 @@ function Pagination({ current, total, onChange }: PaginationProps) {
     </div>
   );
 }  
-type ShopCategoryRow = { name: string; image: string | null };
-
 type SidebarContentProps = {
-  categories: ShopCategoryRow[];
-  selectedCats: string[];
-  toggleCat: (cat: string) => void
   offersOnly: boolean
   setOffersOnly: (v: boolean) => void
   ratingFilter: number | null
@@ -183,9 +198,6 @@ type SidebarContentProps = {
 }
 
 function SidebarContent({
-  categories,
-  selectedCats,
-  toggleCat,
   offersOnly,
   setOffersOnly,
   ratingFilter,
@@ -193,41 +205,11 @@ function SidebarContent({
   setPage,
 }: SidebarContentProps) {
   return (
-    <div className="w-full space-y-3"> 
-      <div className="rounded-2xl overflow-hidden bg-white shadow-sm border border-gray-100">
-        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100">
-          <span className="text-xs font-semibold tracking-[0.15em] uppercase text-gray-500">Categories</span>
-          <ChevronRight className="w-4 h-4 text-gray-300" />
-        </div>
-        <div className="px-4 py-3 space-y-2.5">
-          {categories.map((row) => {
-            const active = selectedCats.includes(row.name);
-            return (
-              <label key={row.name} className="flex items-center gap-3 cursor-pointer">
-                <div
-                  onClick={() => { toggleCat(row.name); setPage(1); }}
-                  className="w-4 h-4 rounded border-2 flex items-center justify-center transition-all shrink-0"
-                  style={
-                    active
-                      ? { borderColor: "#14b8a6", backgroundColor: "#14b8a6" }  
-                      : { borderColor: "#d1d5db", backgroundColor: "#fafafa" }
-                  }
-                >
-                  {active && (
-                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12">
-                      <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </div>
-                <CategorySidebarThumb imageUrl={row.image} label={row.name} size={32} />
-                <span className="text-sm font-medium flex-1 min-w-0" style={{ color: active ? "#059669" : "#4b5563" }}>
-                  {row.name}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      </div> 
+    <div className="w-full space-y-3">
+      <div className="rounded-2xl px-4 py-3 bg-white shadow-sm border border-gray-100 text-xs text-gray-500">
+        <p className="font-semibold text-gray-600 mb-1">Category</p>
+        <p className="leading-relaxed">Use the category and subcategory menus above the product grid. Shop lists only products (not services).</p>
+      </div>
       <div className="rounded-2xl px-4 py-3 bg-white shadow-sm border border-gray-100">
         <p className="text-xs font-semibold tracking-[0.15em] uppercase mb-3 flex items-center gap-2 text-gray-500">
           <Tag className="w-3.5 h-3.5 text-amber-400" /> Offers
@@ -298,8 +280,10 @@ function SidebarContent({
  
 export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorId: string) => void }) {
   const [sellers, setSellers] = useState<ShopItem[]>([]);
-  const [categories, setCategories] = useState<ShopCategoryRow[]>([]);
-  const [selectedCats, setSelectedCats] = useState<string[]>([]);
+  const [rootCategories, setRootCategories] = useState<Category[]>([]);
+  const [subcategories, setSubcategories] = useState<Category[]>([]);
+  const [parentCategoryId, setParentCategoryId] = useState<string>("");
+  const [subcategoryId, setSubcategoryId] = useState<string>("");
   const [loadingSellers, setLoadingSellers] = useState(true);
 
   const [sortBy, setSortBy] = useState("popularity");
@@ -310,49 +294,88 @@ export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorI
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    catalogApi.getCategories({ limit: 50 }).then((res) => {
-      const cats = (res as any)?.data ?? res;
-      const rows: ShopCategoryRow[] = (Array.isArray(cats) ? cats : [])
-        .map((c: any) => ({
-          name: c.name,
-          image: pickCategoryImage(c),
-        }))
-        .filter((r: ShopCategoryRow) => Boolean(r.name));
-      if (rows.length) setCategories(rows);
+    catalogApi.getCategories({ limit: 200, kind: "product" }).then((res) => {
+      let list: Category[] = [];
+      if (Array.isArray(res)) list = res;
+      else if (res && typeof res === "object" && "data" in res && Array.isArray((res as { data: Category[] }).data)) {
+        list = (res as { data: Category[] }).data;
+      }
+      setRootCategories(list.filter((c) => !c.parentId));
     }).catch(() => {});
-
-    catalogApi.getVendors({ limit: 50 }).then((res) => {
-      setSellers(res.data.map((v, i) => ({
-        id: v.id,
-        title: v.businessName || v.name,
-        number: (v as any).phone || `Vendor ${i + 1}`,
-        provider: v.description ?? v.businessName ?? v.name,
-        category: "General",
-        vendorId: String(v.id),
-        rating: v.rating ?? 0,
-        duration: "30 Min",
-        price: 0,
-        pts: 100,
-        distance: "1.0 km",
-        badge: null,
-        image: pickVendorImage(v as any) || (v as any).logoUrl || (v as any).logo || (v as any).banner || "",
-        reviews: 0,
-      })));
-    }).catch(() => {}).finally(() => setLoadingSellers(false));
   }, []);
+
+  useEffect(() => {
+    if (!parentCategoryId) {
+      setSubcategories([]);
+      setSubcategoryId("");
+      return;
+    }
+    catalogApi.getCategoryChildren(parentCategoryId, { kind: "product" }).then((rows) => {
+      let list: Category[] = [];
+      if (Array.isArray(rows)) list = rows;
+      else if (rows && typeof rows === "object" && "data" in rows && Array.isArray((rows as { data: Category[] }).data)) {
+        list = (rows as { data: Category[] }).data;
+      }
+      setSubcategories(list);
+      setSubcategoryId("");
+    }).catch(() => {
+      setSubcategories([]);
+    });
+  }, [parentCategoryId]);
+
+  useEffect(() => {
+    setLoadingSellers(true);
+    const params: {
+      limit: number;
+      offset: number;
+      categoryId?: string;
+      subcategoryId?: string;
+    } = { limit: 200, offset: 0 };
+    if (subcategoryId.trim()) params.subcategoryId = subcategoryId.trim();
+    else if (parentCategoryId.trim()) params.categoryId = parentCategoryId.trim();
+
+    catalogApi.browseProducts(params).then((res) => {
+      const rows = res.data ?? [];
+      setSellers(
+        rows.map((p): ShopItem => {
+          const unit = resolveCatalogUnitPrice(p as unknown as Record<string, unknown>);
+          const thumb =
+            (typeof p.thumbnailUrl === "string" && p.thumbnailUrl) ||
+            (p.metadata && typeof (p.metadata as { imageUrl?: string }).imageUrl === "string"
+              ? (p.metadata as { imageUrl?: string }).imageUrl
+              : "") ||
+            "";
+          return {
+            id: p.id,
+            title: p.name || "Product",
+            number: String(p.id).slice(0, 8),
+            provider: (p as { vendorBusinessName?: string | null }).vendorBusinessName?.trim() || "Vendor",
+            category: "",
+            vendorId: String(p.vendorId ?? ""),
+            rating: 0,
+            duration: "Product",
+            price: unit,
+            pts: 0,
+            distance: "",
+            badge: null,
+            image: thumb || SHOP_CARD_PLACEHOLDER,
+          };
+        }),
+      );
+    }).catch(() => setSellers([])).finally(() => setLoadingSellers(false));
+  }, [parentCategoryId, subcategoryId]);
 
   const filtered = useMemo(() => {
     let data = [...sellers];
-    if (selectedCats.length) data = data.filter((s) => selectedCats.includes(s.category));
     if (search) data = data.filter((s) => s.title.toLowerCase().includes(search.toLowerCase()));
     if (ratingFilter) data = data.filter((s) => s.rating >= ratingFilter);
     if (offersOnly) data = data.filter((s) => s.badge !== null);
     if (sortBy === "low") data.sort((a, b) => a.price - b.price);
     else if (sortBy === "high") data.sort((a, b) => b.price - a.price);
-    else if (sortBy === "newest") data.sort((a, b) => b.id - a.id);
+    else if (sortBy === "newest") data.sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
     else data.sort((a, b) => b.rating - a.rating);
     return data;
-  }, [sellers, selectedCats, search, ratingFilter, offersOnly, sortBy]);
+  }, [sellers, search, ratingFilter, offersOnly, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
@@ -361,24 +384,16 @@ export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorI
     sortBy !== "popularity" ? sortBy : null,
     ratingFilter ? `⭐ ${ratingFilter}+` : null,
     offersOnly ? "Offers" : null,
-    ...selectedCats,
   ].filter(Boolean);
-
-
-  const toggleCat = (cat: string) => {
-    setSelectedCats((prev) => prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]);
-    setPage(1);
-  };
 
   const removeFilter = (f: string) => {
     if (["low", "high", "newest"].includes(f)) setSortBy("popularity");
     else if (f.startsWith("⭐")) setRatingFilter(null);
     else if (f === "Offers") setOffersOnly(false);
-    else toggleCat(f);
     setPage(1);
   };
 
-  const sidebarProps = { categories, selectedCats, toggleCat, offersOnly, setOffersOnly, ratingFilter, setRatingFilter, setPage };
+  const sidebarProps = { offersOnly, setOffersOnly, ratingFilter, setRatingFilter, setPage };
 
   return (
     <div className="min-h-screen font-sans">
@@ -405,8 +420,43 @@ export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorI
         )} 
         <div className="flex-1 min-w-0"> 
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">Electronics</h1>
+            <div className="space-y-2 min-w-0 flex-1">
+              <h1 className="text-lg font-bold text-gray-900">Shop — Products</h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={parentCategoryId}
+                  onChange={(e) => {
+                    setParentCategoryId(e.target.value);
+                    setPage(1);
+                  }}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-800 max-w-[180px]"
+                >
+                  <option value="">All categories</option>
+                  {rootCategories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={subcategoryId}
+                  onChange={(e) => {
+                    setSubcategoryId(e.target.value);
+                    setPage(1);
+                  }}
+                  disabled={!parentCategoryId || subcategories.length === 0}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-800 max-w-[180px] disabled:opacity-50"
+                >
+                  <option value="">
+                    {parentCategoryId ? (subcategories.length ? "All subcategories" : "No subcategories") : "Subcategory"}
+                  </option>
+                  {subcategories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <p className="text-xs text-gray-400 mt-0.5">
                 Showing {Math.min((page - 1) * ITEMS_PER_PAGE + 1, filtered.length)}–
                 {Math.min(page * ITEMS_PER_PAGE, filtered.length)} of {filtered.length} results
@@ -443,7 +493,7 @@ export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorI
               ))}
               <button
                 onClick={() => {
-                  setSelectedCats([]); setSortBy("popularity");
+                  setSortBy("popularity");
                   setRatingFilter(null); setOffersOnly(false); setPage(1);
                 }}
                 className="text-xs text-red-400 underline underline-offset-2 hover:text-red-600"
@@ -495,7 +545,7 @@ export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorI
           </div> 
           <h2 className="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
             <span className="w-1 h-5 rounded-full inline-block" style={{ background: TEAL_GRADIENT }} />
-            Seller List
+            Products
           </h2>
  
           {loadingSellers ? (
@@ -504,12 +554,12 @@ export default function ShopPage({ onVendorSelect }: { onVendorSelect?: (vendorI
             </div>
           ) : paginated.length === 0 ? (
             <div className="bg-white rounded-2xl py-24 text-center text-gray-400 shadow-sm">
-              No sellers found. Try adjusting your filters.
+              No products found. Pick a category or adjust filters.
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-4">
               {paginated.map((service) => (
-                <ServiceCard key={service.id} service={service} onVendorSelect={onVendorSelect} />
+                <ProductBrowseCard key={service.id} item={service} onVendorSelect={onVendorSelect} />
               ))}
             </div>
           )} 

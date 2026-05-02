@@ -3,16 +3,18 @@
 import { useState, useEffect } from "react";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
-import { Store, Package, Star, Loader2 } from "lucide-react";
+import { Store, Package, Star, Loader2, Calendar, Clock } from "lucide-react";
 import { vendorApi, VendorProfile, VendorOrder } from "@/lib/api/vendor";
+import { commerceApi, Booking } from "@/lib/api/commerce";
 import AuthGuard from "@/providers/AuthGuard";
 
-type Tab = "profile" | "orders" | "reviews";
+type Tab = "profile" | "orders" | "bookings" | "reviews";
 
 export default function VendorPortalPage() {
   const [tab, setTab] = useState<Tab>("profile");
   const [profile, setProfile] = useState<VendorProfile | null>(null);
   const [orders, setOrders] = useState<VendorOrder[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +34,12 @@ export default function VendorPortalPage() {
         .then((res) => setOrders(res.data))
         .catch(() => setError("Unable to load orders"))
         .finally(() => setLoading(false));
+    } else if (tab === "bookings") {
+      commerceApi
+        .getVendorBookings({ limit: 50 })
+        .then((res) => setBookings(res.data))
+        .catch(() => setError("Unable to load service bookings"))
+        .finally(() => setLoading(false));
     } else {
       setLoading(false);
     }
@@ -40,8 +48,20 @@ export default function VendorPortalPage() {
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "profile", label: "Profile", icon: <Store className="w-4 h-4" /> },
     { key: "orders", label: "Orders", icon: <Package className="w-4 h-4" /> },
+    { key: "bookings", label: "Service Bookings", icon: <Calendar className="w-4 h-4" /> },
     { key: "reviews", label: "Reviews", icon: <Star className="w-4 h-4" /> },
   ];
+
+  const reviewBooking = async (bookingId: string, status: "approved" | "rejected") => {
+    try {
+      const updated = await commerceApi.updateBookingStatus(bookingId, status);
+      setBookings((prev) =>
+        prev.map((b) => (b.id === bookingId ? { ...b, status: updated.status } : b)),
+      );
+    } catch {
+      alert(`Failed to ${status} booking`);
+    }
+  };
 
   return (
     <AuthGuard>
@@ -124,6 +144,62 @@ export default function VendorPortalPage() {
                   >
                     {o.status}
                   </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Service Bookings Tab */}
+        {!loading && !error && tab === "bookings" && (
+          <div className="space-y-3">
+            {bookings.length === 0 && (
+              <p className="text-center text-gray-400 py-20">No service bookings yet.</p>
+            )}
+            {bookings.map((b) => (
+              <div key={b.id} className="p-4 rounded-xl border bg-white flex justify-between items-center gap-4">
+                <div>
+                  <p className="font-semibold">Booking #{b.id}</p>
+                  <p className="text-xs text-gray-500">Customer: {b.customerId ?? "—"}</p>
+                  <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5" />
+                      {b.date ? new Date(b.date).toLocaleDateString() : "—"}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      {b.slot || b.timeSlot}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full ${
+                      b.status === "approved"
+                        ? "bg-green-100 text-green-700"
+                        : b.status === "rejected" || b.status === "cancelled"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-yellow-100 text-yellow-700"
+                    }`}
+                  >
+                    {b.status}
+                  </span>
+                  {b.status === "pending" && (
+                    <>
+                      <button
+                        className="text-xs px-2 py-1 rounded bg-green-600 text-white"
+                        onClick={() => void reviewBooking(b.id, "approved")}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        className="text-xs px-2 py-1 rounded bg-red-600 text-white"
+                        onClick={() => void reviewBooking(b.id, "rejected")}
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}

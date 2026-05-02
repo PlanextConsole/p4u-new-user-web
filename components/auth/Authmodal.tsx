@@ -5,7 +5,7 @@ import { resolveCustomerIdFromAccessToken } from "@/lib/resolveCustomerId";
 import { X } from "lucide-react";
 import Image from "next/image";
 import authIllustration from "../../images/auth/login.png"; 
-type Step = "login" | "otp" | "success";
+type Step = "login" | "otp" | "success" | "forgot";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -62,7 +62,7 @@ function BrandIcon() {
   );
 }
 
-function LoginStep({ onSendOtp, onPasswordLogin }: { onSendOtp: (phone: string) => void; onPasswordLogin: (username: string, password: string) => Promise<void> }) {
+function LoginStep({ onSendOtp, onPasswordLogin, onForgot }: { onSendOtp: (phone: string) => void; onPasswordLogin: (username: string, password: string) => Promise<void>; onForgot: () => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
@@ -177,6 +177,18 @@ function LoginStep({ onSendOtp, onPasswordLogin }: { onSendOtp: (phone: string) 
           {error}
         </p>
       )}
+      <div style={{ textAlign: "right", marginTop: 6 }}>
+        <button
+          type="button"
+          onClick={onForgot}
+          style={{
+            background: "none", border: "none", padding: 0, cursor: "pointer",
+            color: TEAL, fontWeight: 600, fontSize: 11.5, fontFamily: "inherit",
+          }}
+        >
+          Forgot password?
+        </button>
+      </div>
       <button
         onClick={submit}
         disabled={loading || cooldown > 0}
@@ -221,6 +233,105 @@ function LoginStep({ onSendOtp, onPasswordLogin }: { onSendOtp: (phone: string) 
           </button>
         ))}
       </div>
+    </>
+  );
+}
+
+function ForgotPasswordStep({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  async function submit() {
+    const value = email.trim();
+    if (!value) { setError("Email is required."); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) { setError("Enter a valid email."); return; }
+    setError("");
+    setLoading(true);
+    try {
+      const { authApi } = await import("@/lib/api/auth");
+      await authApi.forgotPassword(value);
+      setSent(true);
+    } catch (e) {
+      setError((e as { message?: string })?.message || "Could not send reset email.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "16px 0" }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: "#111827", margin: "0 0 8px" }}>Check your email</h2>
+        <p style={{ fontSize: 12, color: "#374151", textAlign: "center", margin: "0 0 18px", lineHeight: 1.6 }}>
+          If an account exists for <b>{email}</b>, we sent a password reset link. Follow the link to set a new password.
+        </p>
+        <button
+          onClick={onBack}
+          style={{
+            width: "100%", padding: "10px 0", borderRadius: 8, border: "none",
+            background: TEAL, color: "white", fontSize: 13, fontWeight: 600,
+            cursor: "pointer", fontFamily: "inherit",
+          }}
+        >
+          Back to login
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <h2 style={{ fontSize: 18, fontWeight: 600, color: "#111827", textAlign: "center", margin: "0 0 8px" }}>
+        Reset password
+      </h2>
+      <p style={{ fontSize: 11.5, color: "#6b7280", textAlign: "center", margin: "0 0 16px" }}>
+        Enter the email on your account. We&apos;ll send you a reset link.
+      </p>
+
+      <input
+        type="email"
+        placeholder="you@example.com"
+        value={email}
+        onChange={(e) => { setEmail(e.target.value); if (error) setError(""); }}
+        onKeyDown={(e) => e.key === "Enter" && submit()}
+        style={{
+          width: "100%", padding: "10px 12px",
+          borderRadius: 8, border: `1.5px solid ${error ? "#ef4444" : "#e5e7eb"}`,
+          fontSize: 12.5, color: "#111827", background: "white",
+          outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+        }}
+      />
+      {error && (
+        <p style={{ fontSize: 10.5, color: "#ef4444", marginTop: 4 }}>{error}</p>
+      )}
+      <button
+        onClick={submit}
+        disabled={loading}
+        style={{
+          marginTop: 14, width: "100%", padding: "11px 0",
+          borderRadius: 8, border: "none",
+          background: loading ? "#9ca3af" : TEAL,
+          color: "white", fontSize: 14, fontWeight: 600,
+          cursor: loading ? "not-allowed" : "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+          fontFamily: "inherit",
+        }}
+      >
+        {loading ? <><Spinner /> Sending…</> : "Send reset link"}
+      </button>
+      <button
+        onClick={onBack}
+        style={{
+          marginTop: 10, width: "100%",
+          background: "none", border: "none", cursor: "pointer",
+          color: "#9ca3af", fontSize: 11.5, fontFamily: "inherit",
+          padding: 6, textDecoration: "underline",
+        }}
+      >
+        ← Back to login
+      </button>
     </>
   );
 }
@@ -557,7 +668,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 <X size={17} />
               </button>
             </div> 
-            {step === "login"   && <LoginStep onSendOtp={ph => { setPhone(ph); setStep("otp"); }} onPasswordLogin={handlePasswordLogin} />}
+            {step === "login"   && <LoginStep onSendOtp={ph => { setPhone(ph); setStep("otp"); }} onPasswordLogin={handlePasswordLogin} onForgot={() => setStep("forgot")} />}
+            {step === "forgot"  && <ForgotPasswordStep onBack={() => setStep("login")} />}
             {step === "otp"     && <OtpStep phone={phone} onVerify={() => { setStep("success"); onSuccess?.(phone); }} onBack={() => setStep("login")} />}
             {step === "success" && <SuccessStep onClose={close} />}
           </div>

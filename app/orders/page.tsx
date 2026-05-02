@@ -5,9 +5,11 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Package, Loader2 } from "lucide-react";
 import { commerceApi, Order } from "@/lib/api/commerce";
+import { catalogApi } from "@/lib/api/catalog";
 import AuthGuard from "@/providers/AuthGuard";
 import { useAuth } from "@/providers/AuthContext";
 import { resolveCustomerIdFromAccessToken } from "@/lib/resolveCustomerId";
+import { pickProductImage, resolveMediaUrl } from "@/lib/media";
 
 export default function OrdersPage() {
   const { isLoggedIn, isLoading: authLoading } = useAuth();
@@ -36,7 +38,7 @@ export default function OrdersPage() {
     }
     commerceApi
       .getOrders(customerId, { limit: 50 })
-      .then((res) => {
+      .then(async (res) => {
         setError(null);
         // Backend stores line items in metadata.lines, map them to the items field
         const normalized = res.data.map((o: any) => ({
@@ -46,12 +48,47 @@ export default function OrdersPage() {
                 id: idx,
                 productId: l.productId,
                 productName: l.productName ?? `Product #${l.productId}`,
+                productImage: l.productImage ?? l.thumbnailUrl ?? l.imageUrl ?? "",
                 quantity: l.quantity,
-                price: Number(l.unitPrice || l.lineTotal || 0),
+                unitPrice: Number(l.unitPrice || l.price || 0),
+                price: Number(l.unitPrice || l.lineTotal || l.price || 0),
               }))
             : [],
         }));
-        setOrders(normalized);
+        const productIds = [
+          ...new Set(
+            normalized
+              .flatMap((o: any) => o.items || [])
+              .map((i: any) => String(i.productId || "").trim())
+              .filter(Boolean),
+          ),
+        ];
+        const productMap = new Map<string, { name?: string; image?: string }>();
+        await Promise.all(
+          productIds.map(async (pid) => {
+            try {
+              const p = await catalogApi.getProduct(pid);
+              productMap.set(pid, {
+                name: p?.name || undefined,
+                image: pickProductImage(p as any) || undefined,
+              });
+            } catch {
+              productMap.set(pid, {});
+            }
+          }),
+        );
+        const withDetails = normalized.map((o: any) => ({
+          ...o,
+          items: (o.items || []).map((i: any) => {
+            const ref = productMap.get(String(i.productId || "").trim());
+            return {
+              ...i,
+              productName: i.productName || ref?.name || `Product #${i.productId}`,
+              productImage: i.productImage || ref?.image || "",
+            };
+          }),
+        }));
+        setOrders(withDetails);
       })
       .catch(() => setError("Unable to load orders"))
       .finally(() => setLoading(false));
@@ -97,7 +134,7 @@ export default function OrdersPage() {
             >
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="font-semibold">Order #{o.id}</p>
+                  <p className="font-semibold">Order #{String(o.id).slice(0, 8)}</p>
                   <p className="text-sm text-gray-500 mt-1">
                     {new Date(o.createdAt).toLocaleDateString()} &middot;{" "}
                     {o.items.length} item{o.items.length !== 1 ? "s" : ""}
@@ -119,13 +156,25 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              <div className="mt-3 space-y-1">
-                {o.items.map((item) => (
-                  <div key={item.id} className="text-sm flex justify-between text-gray-600">
-                    <span>
-                      {item.productName ?? `Product #${item.productId}`} x {item.quantity}
-                    </span>
-                    <span>&#8377;{item.price * item.quantity}</span>
+              <div className="mt-3 space-y-2">
+                {o.items.map((item: any) => (
+                  <div key={item.id} className="text-sm flex justify-between items-center text-gray-600 gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-12 h-12 rounded-md border bg-gray-50 overflow-hidden shrink-0">
+                        {item.productImage ? (
+                          <img
+                            src={resolveMediaUrl(item.productImage) || item.productImage}
+                            alt={item.productName ?? "Product"}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : null}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-gray-800 font-medium">{item.productName ?? `Product #${item.productId}`}</p>
+                        <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
+                      </div>
+                    </div>
+                    <span className="shrink-0">&#8377;{(Number(item.unitPrice || item.price || 0) * Number(item.quantity || 1)).toFixed(0)}</span>
                   </div>
                 ))}
               </div>

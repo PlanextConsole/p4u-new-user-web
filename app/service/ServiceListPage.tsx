@@ -5,12 +5,9 @@ import {
   RATING_OPTS, REVIEW_OPTS, OFFER_OPTS, SORT_OPTS, PER_PAGE,
   Seller,
 } from "./serviceData";
-import { catalogApi } from "@/lib/api/catalog";
-import { pickCategoryImage, pickServiceImage } from "@/lib/media";
-import { CategorySidebarThumb } from "@/components/catalog/CategorySidebarThumb";
+import { catalogApi, type Category } from "@/lib/api/catalog";
+import { pickServiceImage } from "@/lib/media";
 
-type ServiceCategoryRow = { name: string; image: string | null };
- 
 const IC = {
   Star:      ({ fill="#f59e0b",size=13 }:{ fill?:string;size?:number })=><svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={fill} strokeWidth="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
   MapPin:    ()=><svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>,
@@ -44,15 +41,12 @@ function Accordion({ label, isOpen, toggle, children }:{ label:string;isOpen:boo
 }
  
 interface SidebarProps {
-  categories: ServiceCategoryRow[];
-  selectedCats:string[]; toggleCat:(c:string)=>void;
   ratingFilter:number[]; toggleRating:(v:number)=>void;
   reviewFilter:string[]; toggleReview:(v:string)=>void;
   offerFilter:string[];  toggleOffer:(v:string)=>void;
 }
 
-function Sidebar({ categories,selectedCats,toggleCat,ratingFilter,toggleRating,reviewFilter,toggleReview,offerFilter,toggleOffer }:SidebarProps) {
-  const [catsOpen,   setCatsOpen]   = useState(true);
+function Sidebar({ ratingFilter,toggleRating,reviewFilter,toggleReview,offerFilter,toggleOffer }:SidebarProps) {
   const [ratingOpen, setRatingOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [offersOpen, setOffersOpen] = useState(false);
@@ -60,24 +54,10 @@ function Sidebar({ categories,selectedCats,toggleCat,ratingFilter,toggleRating,r
   return (
     <div style={{ width:200,flexShrink:0,display:"flex",flexDirection:"column",gap:12 }}> 
       <div style={{ background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 6px rgba(0,0,0,0.08)" }}>
-        <button onClick={()=>setCatsOpen(o=>!o)} style={{ width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",background:TEAL_GRAD,border:"none",cursor:"pointer" }}>
-          <span style={{ fontSize:12,fontWeight:700,color:"#fff",letterSpacing:"0.06em",textTransform:"uppercase" }}>Categories</span>
-          <IC.ChevDown open={catsOpen}/>
-        </button>
-        {catsOpen&&(
-          <div style={{ padding:"6px 0" }}>
-            {categories.map((row) => {
-              const active = selectedCats.includes(row.name);
-              return (
-                <div key={row.name} onClick={()=>toggleCat(row.name)} style={{ display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"pointer",background:active?"#f0fdf4":"transparent",transition:"background .15s" }}>
-                  <Checkbox checked={active} onChange={()=>toggleCat(row.name)}/>
-                  <CategorySidebarThumb imageUrl={row.image} label={row.name} size={28} />
-                  <span style={{ fontSize:12,color:active?TEAL:"#374151",fontWeight:active?600:400,flex:1,minWidth:0 }}>{row.name}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div style={{ padding:"12px 14px",background:TEAL_GRAD }}>
+          <span style={{ fontSize:12,fontWeight:700,color:"#fff",letterSpacing:"0.06em",textTransform:"uppercase" }}>Services</span>
+          <p style={{ fontSize:10,color:"rgba(255,255,255,0.9)",margin:"6px 0 0",lineHeight:1.4,fontWeight:400 }}>Pick a service category above the list (flat taxonomy—no subcategories). Catalog services only, not shop products.</p>
+        </div>
         <Accordion label="Rating" isOpen={ratingOpen} toggle={()=>setRatingOpen(o=>!o)}>
           {RATING_OPTS.map(opt=>(
             <div key={opt.label} onClick={()=>toggleRating(opt.min)} style={{ display:"flex",alignItems:"center",gap:9,cursor:"pointer" }}>
@@ -121,7 +101,17 @@ function Sidebar({ categories,selectedCats,toggleCat,ratingFilter,toggleRating,r
   );
 }
  
-function ServiceCard({ service, onClick }: { service: Seller; onClick: () => void }) {
+function ServiceCard({
+  service,
+  onClick,
+  busy,
+  onPrefetch,
+}: {
+  service: Seller;
+  onClick: () => void;
+  busy?: boolean;
+  onPrefetch?: () => void;
+}) {
   const [fav,     setFav]     = useState(false);
   const [imgOk,   setImgOk]   = useState(Boolean(service.image?.trim()));
 
@@ -131,10 +121,20 @@ function ServiceCard({ service, onClick }: { service: Seller; onClick: () => voi
 
   return (
     <div
-      style={{ background:"#fff",borderRadius:16,overflow:"hidden",boxShadow:"0 2px 12px rgba(0,0,0,0.09)",cursor:"pointer",transition:"transform .22s,box-shadow .22s",display:"flex",flexDirection:"column" }}
-      onMouseEnter={e=>{ (e.currentTarget as HTMLDivElement).style.transform="scale(1.02)"; (e.currentTarget as HTMLDivElement).style.boxShadow="0 10px 30px rgba(0,0,0,0.15)"; }}
+      style={{
+        background:"#fff",borderRadius:16,overflow:"hidden",boxShadow:"0 2px 12px rgba(0,0,0,0.09)",
+        cursor: busy ? "wait" : "pointer",transition:"transform .22s,box-shadow .22s,opacity .2s",display:"flex",flexDirection:"column",
+        opacity: busy ? 0.72 : 1,
+        pointerEvents: busy ? "none" : "auto",
+      }}
+      onMouseEnter={e=>{
+        if (busy) return;
+        (e.currentTarget as HTMLDivElement).style.transform="scale(1.02)";
+        (e.currentTarget as HTMLDivElement).style.boxShadow="0 10px 30px rgba(0,0,0,0.15)";
+        onPrefetch?.();
+      }}
       onMouseLeave={e=>{ (e.currentTarget as HTMLDivElement).style.transform="scale(1)";   (e.currentTarget as HTMLDivElement).style.boxShadow="0 2px 12px rgba(0,0,0,0.09)"; }}
-      onClick={onClick}
+      onClick={busy ? undefined : onClick}
     >
       <div style={{ position:"relative",height:200,background:"#e5e7eb",flexShrink:0,overflow:"hidden" }}>
         {imgOk && service.image ? (
@@ -169,19 +169,32 @@ function ServiceCard({ service, onClick }: { service: Seller; onClick: () => voi
           style={{ width:"100%",padding:"9px 0",color:"#fff",fontSize:12,fontWeight:600,border:"none",borderRadius:10,cursor:"pointer",background:TEAL_DARK,marginTop:"auto" }}
           onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.opacity="0.85"}
           onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.opacity="1"}
-        >Book Consultant @₹{service.price}</button>
+        >
+          Book Consultant
+        </button>
       </div>
     </div>
   );
 } 
 interface ServiceListPageProps {
-  onSelectSeller: (seller: Seller) => void;
+  onSelectSeller: (seller: Seller) => void | Promise<void>;
+  busyServiceId?: string | null;
 }
 
-export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps) {
+function unwrapList<T>(res: unknown): T[] {
+  if (Array.isArray(res)) return res as T[];
+  if (res && typeof res === "object" && "data" in res && Array.isArray((res as { data: T[] }).data)) {
+    return (res as { data: T[] }).data;
+  }
+  return [];
+}
+
+export default function ServiceListPage({ onSelectSeller, busyServiceId }: ServiceListPageProps) {
   const [sellers, setSellers] = useState<Seller[]>([]);
-  const [serviceCatRows, setServiceCatRows] = useState<ServiceCategoryRow[]>([]);
-  const [selectedCats,     setSelectedCats]     = useState<string[]>([]);
+  const [rootCategories, setRootCategories] = useState<Category[]>([]);
+  const [subcategories, setSubcategories] = useState<Category[]>([]);
+  const [parentCategoryId, setParentCategoryId] = useState("");
+  const [subcategoryId, setSubcategoryId] = useState("");
   const [ratingFilter,     setRatingFilter]     = useState<number[]>([]);
   const [reviewFilter,     setReviewFilter]     = useState<string[]>([]);
   const [offerFilter,      setOfferFilter]      = useState<string[]>([]);
@@ -192,32 +205,59 @@ export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps
   const [drawerOpen,       setDrawerOpen]       = useState(false);
 
   useEffect(() => {
-    catalogApi.getCategories({ limit: 50 }).then((res) => {
-      const cats = (res as any)?.data ?? res;
-      const rows: ServiceCategoryRow[] = (Array.isArray(cats) ? cats : [])
-        .map((c: any) => ({ name: c.name, image: pickCategoryImage(c) }))
-        .filter((r: ServiceCategoryRow) => Boolean(r.name));
-      if (rows.length) setServiceCatRows(rows);
+    catalogApi.getCategories({ limit: 200, kind: "service" }).then((res) => {
+      const list = unwrapList<Category>(res);
+      setRootCategories(list.filter((c) => !c.parentId));
     }).catch(() => {});
+  }, []);
 
-    catalogApi.getServices({ limit: 50 }).then((res) => {
-      setSellers(res.data.map((s): Seller => ({
-        id: typeof s.id === "number" ? s.id : Number.parseInt(String(s.id), 10) || 0,
+  useEffect(() => {
+    if (!parentCategoryId) {
+      setSubcategories([]);
+      setSubcategoryId("");
+      return;
+    }
+    catalogApi.getCategoryChildren(parentCategoryId, { kind: "service" }).then((res) => {
+      const list = unwrapList<Category>(res);
+      setSubcategories(list);
+      setSubcategoryId("");
+    }).catch(() => setSubcategories([]));
+  }, [parentCategoryId]);
+
+  useEffect(() => {
+    const params: {
+      limit: number;
+      offset: number;
+      categoryId?: string;
+      subcategoryId?: string;
+    } = { limit: 200, offset: 0 };
+    if (subcategoryId.trim()) params.subcategoryId = subcategoryId.trim();
+    else if (parentCategoryId.trim()) params.categoryId = parentCategoryId.trim();
+
+    catalogApi.getServices(params).then((res) => {
+      const rows = res.data ?? [];
+      setSellers(rows.map((s): Seller => {
+        const meta = (s as { metadata?: Record<string, unknown> }).metadata;
+        const vendorFromMeta =
+          meta && typeof meta.vendorId === "string" ? meta.vendorId : "";
+        return {
+        id: typeof s.id === "number" ? s.id : String(s.id),
         title: s.name,
-        image: pickServiceImage(s as any) ?? "",
+        image: pickServiceImage(s as unknown as Parameters<typeof pickServiceImage>[0]) ?? "",
         provider: s.description ?? s.name,
         description: s.description ?? "",
         rating: 0,
-        price: Number((s as any).metadata?.price ?? 0),
-        duration: String((s as any).metadata?.duration ?? ""),
+        price: 0,
+        duration: String((meta && typeof meta.duration === "string" ? meta.duration : "") ?? ""),
         distance: "",
-        category: "General",
+        category: "",
         badge: null,
         hasOffer: false,
-        vendorId: String((s as any).vendorId ?? ""),
-      })));
-    }).catch(() => {});
-  }, []);
+        vendorId: String((s as { vendorId?: string }).vendorId ?? vendorFromMeta ?? ""),
+      };
+      }));
+    }).catch(() => setSellers([]));
+  }, [parentCategoryId, subcategoryId]);
 
   const mkToggleStr = (setter: React.Dispatch<React.SetStateAction<string[]>>) => (val: string) => {
     setter(p => p.includes(val) ? p.filter(x => x !== val) : [...p, val]);
@@ -227,28 +267,26 @@ export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps
     setter(p => p.includes(val) ? p.filter(x => x !== val) : [...p, val]);
     setPage(1);
   };
-  const toggleCat    = (cat: string) => { setSelectedCats(p => p.includes(cat) ? p.filter(c => c !== cat) : [...p, cat]); setPage(1); };
   const toggleRating = mkToggleNum(setRatingFilter);
   const toggleReview = mkToggleStr(setReviewFilter);
   const toggleOffer  = mkToggleStr(setOfferFilter);
 
   const filtered = useMemo(() => {
     let d = [...sellers];
-    if (selectedCats.length)  d = d.filter(s => selectedCats.includes(s.category));
     if (search)                d = d.filter(s => s.title.toLowerCase().includes(search.toLowerCase()));
     if (ratingFilter.length)  d = d.filter(s => ratingFilter.some(m => s.rating >= m));
     if (offerFilter.length)   d = d.filter(s => s.hasOffer);
     if (sortBy === "low")        d.sort((a,b) => a.price - b.price);
     else if (sortBy === "high")  d.sort((a,b) => b.price - a.price);
-    else if (sortBy === "newest") d.sort((a,b) => b.id - a.id);
+    else if (sortBy === "newest") d.sort((a,b) => (Number(b.id) || 0) - (Number(a.id) || 0));
     else d.sort((a,b) => b.rating - a.rating);
     return d;
-  }, [sellers, selectedCats, search, ratingFilter, offerFilter, sortBy]);
+  }, [sellers, search, ratingFilter, offerFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE);
   const sidebarActive = [...ratingFilter.map(r=>`⭐ ${r}+`), ...reviewFilter, ...offerFilter.map(o=>`🏷 ${o}`)];
-  const clearAll = () => { setActiveTopFilters([]); setSelectedCats([]); setRatingFilter([]); setReviewFilter([]); setOfferFilter([]); setPage(1); };
+  const clearAll = () => { setActiveTopFilters([]); setRatingFilter([]); setReviewFilter([]); setOfferFilter([]); setPage(1); };
   const getPages = (): (number | "...")[] => {
     const ps: (number | "...")[] = [];
     for (let i = 1; i <= totalPages; i++) {
@@ -258,7 +296,7 @@ export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps
     return ps;
   };
 
-  const sidebarProps: SidebarProps = { categories: serviceCatRows, selectedCats, toggleCat, ratingFilter, toggleRating, reviewFilter, toggleReview, offerFilter, toggleOffer };
+  const sidebarProps: SidebarProps = { ratingFilter, toggleRating, reviewFilter, toggleReview, offerFilter, toggleOffer };
 
   return (
     <div   >
@@ -283,9 +321,36 @@ export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps
         <div style={{ flex:1,minWidth:0 }}> 
           <div style={{ background:"#fff",borderRadius:12,padding:"12px 16px",marginBottom:10,boxShadow:"0 1px 5px rgba(0,0,0,0.06)" }}>
             <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10 }}>
-              <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-                <span style={{ fontSize:14,fontWeight:700,color:"#111827" }}>Services</span>
-                <span style={{ fontSize:12,color:"#9ca3af" }}>Showing 1–{filtered.length} of {sellers.length}</span>
+              <div style={{ display:"flex",flexDirection:"column",gap:8,minWidth:0 }}>
+                <div style={{ display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" }}>
+                  <span style={{ fontSize:14,fontWeight:700,color:"#111827" }}>Services</span>
+                  <span style={{ fontSize:12,color:"#9ca3af" }}>Showing 1–{filtered.length} of {sellers.length}</span>
+                </div>
+                <div style={{ display:"flex",flexWrap:"wrap",gap:8,alignItems:"center" }}>
+                  <select
+                    value={parentCategoryId}
+                    onChange={(e) => { setParentCategoryId(e.target.value); setPage(1); }}
+                    style={{ fontSize:12,padding:"6px 10px",borderRadius:8,border:"1px solid #e5e7eb",maxWidth:200 }}
+                  >
+                    <option value="">All categories</option>
+                    {rootCategories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={subcategoryId}
+                    onChange={(e) => { setSubcategoryId(e.target.value); setPage(1); }}
+                    disabled={!parentCategoryId || subcategories.length === 0}
+                    style={{ fontSize:12,padding:"6px 10px",borderRadius:8,border:"1px solid #e5e7eb",maxWidth:200,opacity:!parentCategoryId||subcategories.length===0?0.5:1 }}
+                  >
+                    <option value="">
+                      {parentCategoryId ? (subcategories.length ? "All subcategories" : "No subcategories") : "Subcategory"}
+                    </option>
+                    {subcategories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <button onClick={()=>setDrawerOpen(true)} className="svc-mobile-filter" style={{ display:"none",alignItems:"center",gap:5,padding:"6px 12px",border:"1px solid #e5e7eb",borderRadius:8,background:"#fff",fontSize:12,cursor:"pointer" }}>
                 <IC.Filter/> Filters
@@ -321,7 +386,15 @@ export default function ServiceListPage({ onSelectSeller }: ServiceListPageProps
             <div style={{ background:"#fff",borderRadius:16,padding:"80px 20px",textAlign:"center",color:"#9ca3af",fontSize:14 }}>No services found. Try adjusting your filters.</div>
           ):(
             <div className="svc-grid" style={{ display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16 }}>
-              {paginated.map(s=><ServiceCard key={s.id} service={s} onClick={()=>onSelectSeller(s)}/>)}
+              {paginated.map((s) => (
+                <ServiceCard
+                  key={String(s.id)}
+                  service={s}
+                  busy={busyServiceId != null && String(busyServiceId) === String(s.id)}
+                  onPrefetch={() => void catalogApi.prefetchServiceVendorOffers(String(s.id))}
+                  onClick={() => void onSelectSeller(s)}
+                />
+              ))}
             </div>
           )} 
           {totalPages>1&&(

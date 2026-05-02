@@ -4,7 +4,7 @@ export interface Badge {
 }
 
 export interface Product {
-  id: number;
+  id: string | number;
   name: string;
   brand: string;
   price: number;
@@ -52,7 +52,7 @@ export interface Vendor {
 }
 
 export interface Seller {
-  id: number;
+  id: string | number;
   title: string;
   image: string;
   provider: string;

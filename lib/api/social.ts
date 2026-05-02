@@ -206,8 +206,11 @@ export const socialApi = {
     });
   },
 
-  getSuggestions() {
-    return apiClient.get<UserSummary[]>(`${BASE}/users/suggestions`);
+  getSuggestions(params?: { limit?: number; offset?: number }) {
+    return apiClient.get<UserSummary[]>(
+      `${BASE}/users/suggestions`,
+      params as Record<string, string | number | boolean> | undefined,
+    );
   },
 
   getStoryFeed() {

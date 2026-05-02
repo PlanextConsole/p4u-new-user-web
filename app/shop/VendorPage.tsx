@@ -12,6 +12,7 @@ import { TEAL_GRADIENT } from "./constants";
 import { catalogApi } from "@/lib/api/catalog";
 import { Loader2 } from "lucide-react";
 import { pickProductImage, pickVendorImage, resolveMediaUrl } from "@/lib/media";
+import { resolveCatalogDisplayOriginal, resolveCatalogUnitPrice } from "@/lib/catalog/resolvePrice";
 
 const TEAL_SOLID = "#0d9488";
  
@@ -339,6 +340,7 @@ function ProductCard({ product, onProductClick, vendorId, vendorName, vendorCate
   vendorName: string;
   vendorCategory: string;
 }) {
+  const router = useRouter();
   const { addToCart } = useCart();
   const [qty, setQty] = useState(1);
   const [selectedColor, setSelectedColor] = useState<Color | null>(product.colors?.[0] ?? null);
@@ -365,7 +367,16 @@ function ProductCard({ product, onProductClick, vendorId, vendorName, vendorCate
       className="bg-white rounded-2xl overflow-hidden flex flex-col cursor-pointer"
       style={{ boxShadow: "0 2px 16px rgba(0,0,0,0.10)", border: "1px solid #f0f0f0", transition: "box-shadow 0.2s, transform 0.2s" }}
       onClick={() => onProductClick(product)}
-      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 8px 32px rgba(0,0,0,0.16)"; e.currentTarget.style.transform = "translateY(-3px)"; }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.boxShadow = "0 8px 32px rgba(0,0,0,0.16)";
+        e.currentTarget.style.transform = "translateY(-3px)";
+        if (product.id) {
+          const pid = String(product.id);
+          const path = `/shop/${vendorId}/${pid}`;
+          router.prefetch(path);
+          void catalogApi.prefetchProduct(pid);
+        }
+      }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "0 2px 16px rgba(0,0,0,0.10)"; e.currentTarget.style.transform = "translateY(0)"; }}
     > 
       <div className="relative overflow-hidden w-full" style={{ height: "clamp(120px, 20vw, 180px)" }}>
@@ -546,12 +557,15 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
         banners: (v as any).banners ?? [],
         tabs: ["All"],
         tabCounts: [productsRes.data.length],
-        products: productsRes.data.map((p) => ({
+        products: productsRes.data.map((p) => {
+          const row = p as unknown as Record<string, unknown>;
+          const unit = resolveCatalogUnitPrice(row);
+          return {
           id: p.id,
           name: p.name,
           color: "",
-          price: Number((p as any).finalPrice ?? (p as any).sellPrice ?? p.price ?? 0),
-          originalPrice: p.originalPrice ?? Number((p as any).finalPrice ?? p.price ?? 0),
+          price: unit,
+          originalPrice: resolveCatalogDisplayOriginal(row, unit),
           rating: 0,
           reviews: 0,
           thumbnailUrl: (p as any).thumbnailUrl,
@@ -561,7 +575,8 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
           brand: p.metadata?.brand ?? "",
           badge: null,
           badgeColor: null,
-        })),
+        };
+        }),
       } as any);
     }).catch(() => {
       setVendor(null);

@@ -40,11 +40,35 @@ interface ErrorEnvelope {
   };
 }
 
+interface GetOptions {
+  /** Cache successful GET responses for this duration. Defaults to 30s. */
+  cacheTtlMs?: number;
+  /** Skip cache lookup and force a network request. */
+  forceRefresh?: boolean;
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
   limit: number;
   offset: number;
+}
+
+const DEFAULT_GET_CACHE_TTL_MS = 30_000;
+const getResponseCache = new Map<string, { expiresAt: number; value: unknown }>();
+const inflightGetRequests = new Map<string, Promise<unknown>>();
+
+function makeGetCacheKey(pathWithQuery: string): string {
+  const token = typeof window !== "undefined" ? localStorage.getItem("p4u_token") ?? "" : "";
+  return `${pathWithQuery}::${token}`;
+}
+
+function cloneJsonSafe<T>(value: T): T {
+  try {
+    return JSON.parse(JSON.stringify(value)) as T;
+  } catch {
+    return value;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -143,13 +167,47 @@ async function request<T>(
 /* ------------------------------------------------------------------ */
 
 export const apiClient = {
-  get<T>(path: string, params?: Record<string, string | number | boolean>) {
+  get<T>(
+    path: string,
+    params?: Record<string, string | number | boolean>,
+    options?: GetOptions,
+  ) {
     const query = params
       ? "?" + new URLSearchParams(
           Object.entries(params).map(([k, v]) => [k, String(v)]),
         ).toString()
       : "";
-    return request<T>(path + query);
+    const pathWithQuery = path + query;
+    const key = makeGetCacheKey(pathWithQuery);
+    const forceRefresh = Boolean(options?.forceRefresh);
+    const ttlMs = options?.cacheTtlMs ?? DEFAULT_GET_CACHE_TTL_MS;
+    const now = Date.now();
+
+    if (!forceRefresh) {
+      const hit = getResponseCache.get(key);
+      if (hit && hit.expiresAt > now) {
+        return Promise.resolve(cloneJsonSafe(hit.value as T));
+      }
+      const pending = inflightGetRequests.get(key);
+      if (pending) return pending.then((v) => cloneJsonSafe(v as T));
+    }
+
+    const req = request<T>(pathWithQuery)
+      .then((result) => {
+        if (ttlMs > 0) {
+          getResponseCache.set(key, {
+            expiresAt: Date.now() + ttlMs,
+            value: cloneJsonSafe(result),
+          });
+        }
+        return cloneJsonSafe(result);
+      })
+      .finally(() => {
+        inflightGetRequests.delete(key);
+      });
+
+    inflightGetRequests.set(key, req as Promise<unknown>);
+    return req;
   },
 
   post<T>(path: string, body?: unknown) {
@@ -175,5 +233,23 @@ export const apiClient = {
 
   delete<T>(path: string) {
     return request<T>(path, { method: "DELETE" });
+  },
+
+  prefetchGet(path: string, params?: Record<string, string | number | boolean>, options?: GetOptions) {
+    return this.get(path, params, options).then(() => undefined);
+  },
+
+  clearGetCache(pathPrefix?: string) {
+    if (!pathPrefix) {
+      getResponseCache.clear();
+      inflightGetRequests.clear();
+      return;
+    }
+    for (const key of getResponseCache.keys()) {
+      if (key.startsWith(pathPrefix)) getResponseCache.delete(key);
+    }
+    for (const key of inflightGetRequests.keys()) {
+      if (key.startsWith(pathPrefix)) inflightGetRequests.delete(key);
+    }
   },
 };

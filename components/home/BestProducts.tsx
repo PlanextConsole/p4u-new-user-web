@@ -3,7 +3,11 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { contentApi } from "@/lib/api/content";
 import { catalogApi } from "@/lib/api/catalog";
+import { resolveCatalogUnitPrice } from "@/lib/catalog/resolvePrice";
+import { resolveMediaUrl } from "@/lib/media";
 import bluetooth from "../../images/best-products/bluetooth-speaker.png";
 import mobile from "../../images/best-products/mobile.png";
 import moniter from "../../images/best-products/moniter.png";
@@ -11,6 +15,8 @@ import printer from "../../images/best-products/printer.png";
 import watch from "../../images/best-products/watch.png";
 
 interface ProductCard {
+  id?: string;
+  vendorId?: string;
   name: string;
   subtitle: string | null;
   price: string | null;
@@ -18,19 +24,55 @@ interface ProductCard {
 }
 
 export default function BestProducts() {
+  const router = useRouter();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [products, setProducts] = useState<ProductCard[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    catalogApi.getVendorProducts(0, { limit: 10 }).then((res) => {
-      setProducts(res.data.map((p) => ({
+    const fromFeatured = (items: Array<{ name: string; section?: string | null; price?: string | number | null; imageUrl?: string | null }>) =>
+      items.slice(0, 12).map((p) => ({
         name: p.name,
-        subtitle: null,
-        price: p.price ? `₹${p.price}` : null,
-        image: p.metadata?.imageUrl || p.image || mobile,
-      })));
-    }).catch(() => {}).finally(() => setLoading(false));
+        subtitle: p.section ?? null,
+        price: p.price ? (String(p.price).startsWith("₹") ? String(p.price) : `₹${p.price}`) : null,
+        image: (p.imageUrl && resolveMediaUrl(p.imageUrl)) || p.imageUrl || mobile,
+      }));
+
+    const fromCatalog = async () => {
+      const res = await catalogApi.browseProducts({ limit: 12, offset: 0 });
+      return (res.data ?? []).map((p) => {
+        const unit = resolveCatalogUnitPrice(p as unknown as Record<string, unknown>);
+        return {
+          id: String(p.id ?? ""),
+          vendorId: String(p.vendorId ?? ""),
+          name: p.name || "Product",
+          subtitle: null,
+          price: unit > 0 ? `₹${unit}` : null,
+          image: p.thumbnailUrl || mobile,
+        };
+      });
+    };
+
+    contentApi
+      .getFeaturedProducts()
+      .then(async (items) => {
+        const featured = fromFeatured(items);
+        if (featured.length > 0) {
+          setProducts(featured);
+          return;
+        }
+        const catalogRows = await fromCatalog();
+        setProducts(catalogRows);
+      })
+      .catch(async () => {
+        try {
+          const catalogRows = await fromCatalog();
+          setProducts(catalogRows);
+        } catch {
+          setProducts([]);
+        }
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const scroll = (direction: "left" | "right") => {
@@ -106,6 +148,10 @@ export default function BestProducts() {
               {products.map((product, index) => (
                 <div
                   key={index}
+                  onClick={() => {
+                    if (product.vendorId && product.id) router.push(`/shop/${product.vendorId}/${product.id}`);
+                    else router.push("/shop");
+                  }}
                   className="flex-shrink-0 w-[160px] sm:w-[200px] lg:w-[240px] bg-white rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] cursor-pointer"
                 >
                   <div className="h-[160px] sm:h-[200px] lg:h-[240px] bg-white flex items-center justify-center p-4 sm:p-5 lg:p-6">

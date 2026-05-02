@@ -7,9 +7,64 @@ import { CreditCard, Tag, Loader2, ShoppingBag, CheckCircle, XCircle } from "luc
 import { useCart } from "@/providers/CartContext";
 import { commerceApi, CheckoutQuote } from "@/lib/api/commerce";
 import { paymentsApi } from "@/lib/api/payments";
-import AuthGuard from "@/providers/AuthGuard";
+import { useAuth } from "@/providers/AuthContext";
 import type { ApiError } from "@/lib/api/client";
 import { useAppLoading } from "@/providers/AppLoadingProvider";
+
+type RazorpayHandlerPayload = {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+};
+
+type RazorpayOptions = {
+  key: string;
+  amount: number;
+  currency: string;
+  order_id: string;
+  name?: string;
+  description?: string;
+  prefill?: { name?: string; email?: string; contact?: string };
+  handler: (response: RazorpayHandlerPayload) => void;
+  modal?: { ondismiss?: () => void };
+  theme?: { color?: string };
+};
+
+type RazorpayInstance = { open: () => void };
+type RazorpayCtor = new (opts: RazorpayOptions) => RazorpayInstance;
+
+declare global {
+  interface Window {
+    Razorpay?: RazorpayCtor;
+  }
+}
+
+const RAZORPAY_SCRIPT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
+
+function loadRazorpay(): Promise<RazorpayCtor> {
+  if (typeof window === "undefined") return Promise.reject(new Error("no window"));
+  if (window.Razorpay) return Promise.resolve(window.Razorpay);
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${RAZORPAY_SCRIPT_SRC}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => {
+        if (window.Razorpay) resolve(window.Razorpay);
+        else reject(new Error("Razorpay SDK failed to load"));
+      });
+      existing.addEventListener("error", () => reject(new Error("Razorpay SDK failed to load")));
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = RAZORPAY_SCRIPT_SRC;
+    script.async = true;
+    script.onload = () => {
+      if (window.Razorpay) resolve(window.Razorpay);
+      else reject(new Error("Razorpay SDK failed to load"));
+    };
+    script.onerror = () => reject(new Error("Razorpay SDK failed to load"));
+    document.body.appendChild(script);
+  });
+}
 
 function messageFromApiError(e: unknown, fallback: string): string {
   if (typeof e === "object" && e !== null && "message" in e) {
@@ -21,13 +76,14 @@ function messageFromApiError(e: unknown, fallback: string): string {
 
 export default function CheckoutPage() {
   const { runWithLoading } = useAppLoading();
+  const { isLoggedIn } = useAuth();
   const { items, clearCart } = useCart();
   const [coupon, setCoupon] = useState("");
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [quote, setQuote] = useState<CheckoutQuote | null>(null);
   const [loading, setLoading] = useState(false);
   const [placing, setPlacing] = useState(false);
-  const [orderStatus, setOrderStatus] = useState<"idle" | "success" | "failed">("idle");
+  const [orderStatus, setOrderStatus] = useState<"idle" | "success" | "failed" | "pending">("idle");
   const [error, setError] = useState<string | null>(null);
 
   const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
@@ -50,7 +106,6 @@ export default function CheckoutPage() {
     }
   }, [subtotal, couponDiscount]);
 
-  // Auto-fetch quote when items change
   useEffect(() => {
     if (items.length > 0) {
       fetchQuote();
@@ -72,8 +127,9 @@ export default function CheckoutPage() {
       const discount = validation.discount ?? 0;
       setCouponDiscount(discount);
       await fetchQuote(discount);
-    } catch {
-      setError("Unable to validate coupon");
+    } catch (e: unknown) {
+      const st = typeof e === "object" && e !== null && "status" in e ? (e as ApiError).status : -1;
+      setError(st === 401 ? "Sign in to apply coupons." : "Unable to validate coupon");
     } finally {
       setLoading(false);
     }
@@ -83,12 +139,19 @@ export default function CheckoutPage() {
     setPlacing(true);
     setError(null);
     try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("p4u_token") : null;
+      if (!token) {
+        setError("Please sign in to place an order.");
+        return;
+      }
+
+      const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      if (!razorpayKey) {
+        setError("Payment is not configured. Missing NEXT_PUBLIC_RAZORPAY_KEY_ID.");
+        return;
+      }
+
       await runWithLoading(async () => {
-        const token = typeof window !== "undefined" ? localStorage.getItem("p4u_token") : null;
-        if (!token) {
-          setError("Please sign in to place an order.");
-          return;
-        }
         if (items.length > 0) {
           await commerceApi.updateCart(
             items.map((i) => ({
@@ -100,37 +163,61 @@ export default function CheckoutPage() {
           );
         }
         const order = await commerceApi.createOrderFromCart();
+        const amount = quote?.total ?? subtotal;
         const intent = await paymentsApi.createIntent({
           orderId: order.id,
-          amount: quote?.total ?? subtotal,
+          amount,
         });
 
-        let attempts = 0;
-        const maxAttempts = 10;
-        const pollPayment = async (): Promise<boolean> => {
-          attempts++;
-          try {
-            const status = await paymentsApi.getIntent(intent.id);
-            if (status.status === "succeeded" || status.status === "completed") return true;
-            if (status.status === "failed" || status.status === "cancelled") return false;
-          } catch {
-            // continue polling
-          }
-          if (attempts < maxAttempts) {
-            await new Promise((r) => setTimeout(r, 2000));
-            return pollPayment();
-          }
-          return true;
-        };
-
-        const paid = await pollPayment();
-        if (paid) {
-          clearCart();
-          setOrderStatus("success");
-        } else {
-          setOrderStatus("failed");
-          setError("Payment was not completed. Please check your orders page.");
+        if (!intent.providerRef) {
+          throw new Error("Payment provider did not return an order reference.");
         }
+
+        const Rzp = await loadRazorpay();
+
+        // Razorpay expects the amount in subunits (paise).
+        const amountSubunits = Math.round(Number(amount) * 100);
+
+        await new Promise<void>((resolve) => {
+          const rzp = new Rzp({
+            key: razorpayKey,
+            amount: amountSubunits,
+            currency: intent.currency || "INR",
+            order_id: intent.providerRef as string,
+            name: "P4U",
+            description: `Order ${order.id}`,
+            handler: async (resp) => {
+              try {
+                const result = await paymentsApi.verify({
+                  razorpay_order_id: resp.razorpay_order_id,
+                  razorpay_payment_id: resp.razorpay_payment_id,
+                  razorpay_signature: resp.razorpay_signature,
+                });
+                if (result.verified) {
+                  clearCart();
+                  setOrderStatus("success");
+                } else {
+                  setOrderStatus("failed");
+                  setError("Payment signature could not be verified.");
+                }
+              } catch (e) {
+                setOrderStatus("failed");
+                setError(messageFromApiError(e, "Payment verification failed."));
+              } finally {
+                resolve();
+              }
+            },
+            modal: {
+              ondismiss: () => {
+                setOrderStatus("pending");
+                setError("Payment was cancelled. The order is still pending and can be paid from My Orders.");
+                resolve();
+              },
+            },
+            theme: { color: "#0d9488" },
+          });
+          rzp.open();
+        });
       });
     } catch (e: unknown) {
       setError(messageFromApiError(e, "Failed to place order. Please try again."));
@@ -141,7 +228,6 @@ export default function CheckoutPage() {
 
   if (orderStatus === "success") {
     return (
-      <AuthGuard>
         <div className="min-h-screen flex flex-col">
           <Header />
           <main className="flex-1 flex flex-col items-center justify-center gap-4 py-20">
@@ -161,22 +247,21 @@ export default function CheckoutPage() {
           </main>
           <Footer />
         </div>
-      </AuthGuard>
     );
   }
 
-  if (orderStatus === "failed") {
+  if (orderStatus === "failed" || orderStatus === "pending") {
+    const isPending = orderStatus === "pending";
     return (
-      <AuthGuard>
         <div className="min-h-screen flex flex-col">
           <Header />
           <main className="flex-1 flex flex-col items-center justify-center gap-4 py-20">
-            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
-              <XCircle className="w-8 h-8 text-red-600" />
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center ${isPending ? "bg-yellow-100" : "bg-red-100"}`}>
+              <XCircle className={`w-8 h-8 ${isPending ? "text-yellow-600" : "text-red-600"}`} />
             </div>
-            <h2 className="text-2xl font-bold">Payment Issue</h2>
+            <h2 className="text-2xl font-bold">{isPending ? "Payment Pending" : "Payment Failed"}</h2>
             <p className="text-gray-500 text-center max-w-md">
-              Your order was created but payment could not be confirmed. Please check your orders page for status.
+              {error ?? (isPending ? "Your order was created. Complete the payment from My Orders." : "Payment could not be completed.")}
             </p>
             <div className="flex gap-3 mt-4">
               <a href="/orders" className="px-6 py-2 rounded-xl bg-teal-600 text-white font-medium">
@@ -186,16 +271,27 @@ export default function CheckoutPage() {
           </main>
           <Footer />
         </div>
-      </AuthGuard>
     );
   }
 
   return (
-    <AuthGuard>
       <div className="min-h-screen flex flex-col">
         <Header />
         <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-8">
           <h1 className="text-2xl font-bold mb-6">Checkout</h1>
+
+          {!isLoggedIn && items.length > 0 && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Sign in to complete payment.{" "}
+              <button
+                type="button"
+                className="font-semibold text-teal-800 underline"
+                onClick={() => window.dispatchEvent(new CustomEvent("p4u-open-auth"))}
+              >
+                Sign in
+              </button>
+            </div>
+          )}
 
           {items.length === 0 ? (
             <p className="text-center text-gray-400 py-20">Your cart is empty.</p>
@@ -274,7 +370,7 @@ export default function CheckoutPage() {
               <button
                 type="button"
                 onClick={placeOrder}
-                disabled={placing}
+                disabled={placing || !isLoggedIn}
                 className="w-full py-3 rounded-xl bg-teal-600 text-white font-bold text-lg disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {placing ? (
@@ -282,15 +378,16 @@ export default function CheckoutPage() {
                 ) : (
                   <CreditCard className="w-5 h-5" />
                 )}
-                {placing
-                  ? "Placing Order..."
-                  : `Pay ₹${quote?.total ?? subtotal}`}
+                {!isLoggedIn
+                  ? "Sign in to pay"
+                  : placing
+                    ? "Placing Order..."
+                    : `Pay ₹${quote?.total ?? subtotal}`}
               </button>
             </div>
           )}
         </main>
         <Footer />
       </div>
-    </AuthGuard>
   );
 }

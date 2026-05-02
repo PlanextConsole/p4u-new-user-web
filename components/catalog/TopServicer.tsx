@@ -2,6 +2,7 @@
 import { ChevronLeft, ChevronRight, Star, MapPin, Clock } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { catalogApi } from "@/lib/api/catalog";
 import { pickVendorImage } from "@/lib/media";
 import plumbing1 from "../../images/top-servicer/plumbing1.png";
@@ -57,16 +58,17 @@ const FALLBACK_SERVICES = [
 ];
 
 export default function TopServicer() {
+  const router = useRouter();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [services, setServices] = useState<{ image: string | typeof plumbing1; badge: string | null; title: string; provider: string; rating: number; duration: string; description: string; price: number; distance: string }[]>([]);
 
   useEffect(() => {
-    catalogApi.getVendors({ limit: 8 }).then((res) => {
+    catalogApi.getVendors({ limit: 8, vendorKind: "service" }).then((res) => {
       setServices(res.data.map((v) => ({
         image: pickVendorImage(v as any) || (v as any).logoUrl || (v as any).logo || plumbing1,
         badge: null,
-        title: v.businessName || v.name,
-        provider: v.description ?? v.businessName ?? v.name,
+        title: v.businessName || v.name || "Vendor",
+        provider: v.description ?? v.businessName ?? v.name ?? "",
         rating: v.rating ?? 0,
         duration: "",
         description: v.description ?? "",
@@ -213,6 +215,8 @@ export default function TopServicer() {
                       {service.description}
                     </p>
 <button
+  type="button"
+  onClick={() => router.push("/service")}
   className="w-full py-2 sm:py-2.5 text-white text-xs sm:text-sm font-medium transition-all hover:opacity-90"
   style={{
     borderRadius: "10px",

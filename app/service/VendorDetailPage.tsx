@@ -1,10 +1,12 @@
 "use client"; 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import ServiceBookingModal from "@/components/booking/ServiceBookingModal";
 import { useCart } from "@/providers/CartContext";
 import { TEAL, TEAL_GRAD, TEAL_DARK, BannerSlide, Vendor, Product } from "./serviceData";
-import { catalogApi } from "@/lib/api/catalog";
+import { catalogApi, type Vendor as CatalogVendor, type Product as CatalogProduct } from "@/lib/api/catalog";
 import { commerceApi } from "@/lib/api/commerce";
 import { pickProductImage, pickVendorImage } from "@/lib/media";
+import { resolveCatalogDisplayOriginal, resolveCatalogUnitPrice } from "@/lib/catalog/resolvePrice";
 const IC = {
   Star:      ({ fill="#f59e0b",size=13 }:{ fill?:string;size?:number })=><svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={fill} strokeWidth="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
   MapPin:    ()=><svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>,
@@ -203,7 +205,15 @@ function VendorLogo({ vendor }: { vendor: Vendor }) {
   return <div style={boxStyle}>{logo || "🏪"}</div>;
 }
 
-function VendorInfoCard({ vendor }:{ vendor:Vendor }) {
+function VendorInfoCard({
+  vendor,
+  onBookNow,
+  bookNowLabel,
+}: {
+  vendor: Vendor;
+  onBookNow?: () => void;
+  bookNowLabel?: string;
+}) {
   return (
     <div style={{ background:"#fff",borderRadius:16,padding:"16px 20px",marginBottom:16,boxShadow:"0 2px 12px rgba(0,0,0,0.08)",border:"1px solid #f0f0f0" }}>
       <div style={{ display:"flex",gap:16,alignItems:"flex-start",flexWrap:"wrap" }}>
@@ -233,8 +243,12 @@ function VendorInfoCard({ vendor }:{ vendor:Vendor }) {
             ))}
           </div>
            <div style={{ display:"flex",gap:8,marginTop:12 }}>
-            <button style={{ display:"flex",alignItems:"center",gap:6,padding:"8px 20px",background:TEAL_GRAD,border:"none",borderRadius:20,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 12px rgba(13,148,136,0.35)" }}>
-              <IC.Phone/> Book Now @ ₹49
+            <button
+              type="button"
+              onClick={onBookNow}
+              style={{ display:"flex",alignItems:"center",gap:6,padding:"8px 20px",background:TEAL_GRAD,border:"none",borderRadius:20,color:"#fff",fontSize:12,fontWeight:700,cursor:onBookNow?"pointer":"default",boxShadow:"0 4px 12px rgba(13,148,136,0.35)",opacity:onBookNow?1:0.85 }}
+            >
+              <IC.Phone/> {bookNowLabel ?? "Book service"}
             </button>
           </div>
         </div>
@@ -361,7 +375,7 @@ function ProductCard({ product, vendorId, vendorName }: ProductCardProps) {
         </div> 
         <div style={{ fontSize:10,color:"#6b7280",marginBottom:8,display:"flex",alignItems:"center",gap:4 }}>
           <IC.Clock/>
-          <span>Starts at ₹{[49,79,99][product.id % 3]} • {product.duration}</span>
+          <span>Starts at ₹{product.price} • {product.duration}</span>
         </div>
  
         <div style={{ borderTop:"1px solid #f0f0f0",paddingTop:8,display:"flex",gap:6,alignItems:"center" }}>
@@ -443,84 +457,148 @@ function defaultBanners(vendorName: string, icon: string): BannerSlide[] {
       icon: icon.startsWith("http") ? "🏪" : icon,
     },
   ];
-} 
+}
+
+type ReviewSummaryShape = {
+  averageRating: number;
+  totalReviews: number;
+  breakdown: Record<number, number>;
+};
+
+const EMPTY_REVIEW_SUMMARY: ReviewSummaryShape = {
+  averageRating: 0,
+  totalReviews: 0,
+  breakdown: {},
+};
+
+function mapCatalogProducts(products: CatalogProduct[]): Product[] {
+  return products.map((p) => {
+    const row = p as unknown as Record<string, unknown>;
+    const unit = resolveCatalogUnitPrice(row);
+    return {
+    id: p.id,
+    name: p.name,
+    brand: (p.metadata?.brand as string) ?? "",
+    price: unit,
+    originalPrice: resolveCatalogDisplayOriginal(row, unit),
+    rating: 0,
+    reviews: 0,
+    image: pickProductImage(p as any) || "",
+    description: p.description ?? "",
+    duration: "—",
+    category: "General",
+  };
+  });
+}
+
+function buildVendorState(
+  v: CatalogVendor,
+  catalogProducts: CatalogProduct[],
+  summary: ReviewSummaryShape,
+): Vendor {
+  const logoResolved = pickVendorImage(v as any)?.trim();
+  const logoText = (v as any).logo?.trim();
+  const logoDisplay = logoResolved || logoText || "🏪";
+  const bannerIcon = logoResolved ? "🏪" : logoDisplay;
+  return {
+    id: String(v.id),
+    name: (v as any).businessName || (v as any).name || "Vendor",
+    logo: logoDisplay,
+    logoColor: "#0d9488",
+    verified: Boolean(v.isActive),
+    since: "—",
+    category: "General",
+    subCategory: v.description ?? "",
+    delivery: "—",
+    rating: summary.averageRating || (v as any).rating || 0,
+    totalRatings: summary.totalReviews,
+    phone: "",
+    email: "",
+    address: "",
+    description: v.description ?? "",
+    openHours: "—",
+    distance: "—",
+    banners: defaultBanners(v.name ?? "Vendor", bannerIcon),
+    tabs: ["Services", "About", "Gallery"],
+    products: mapCatalogProducts(catalogProducts),
+  };
+}
+
+function ProductGridSkeleton() {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(170px,1fr))", gap: 14 }}>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} style={{ height: 280, borderRadius: 16, background: "#f3f4f6" }} />
+      ))}
+    </div>
+  );
+}
+
 interface VendorDetailPageProps {
   vendorId: string;
   onBack:   () => void;
+  /** Catalog service id when user arrived from the Services list */
+  prefillServiceId?: string | null;
+  prefillServiceTitle?: string;
+  prefillPrice?: number;
+  /** Open booking modal once after vendor loads (e.g. chose a service from list) */
+  autoOpenBooking?: boolean;
 }
 
-export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageProps) {
+export default function VendorDetailPage({
+  vendorId,
+  onBack,
+  prefillServiceId = null,
+  prefillServiceTitle,
+  prefillPrice,
+  autoOpenBooking = false,
+}: VendorDetailPageProps) {
   const [vendor, setVendor] = useState<Vendor | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingVendor, setLoadingVendor] = useState(true);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const autoOpenedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     const idParam = vendorId.trim();
     if (!idParam) {
       setVendor(null);
-      setLoading(false);
+      setLoadingVendor(false);
+      setLoadingProducts(false);
       return;
     }
     const numId = Number(idParam);
     const catalogId = Number.isFinite(numId) && String(numId) === idParam ? numId : idParam;
 
-    Promise.all([
-      catalogApi.getVendor(catalogId),
-      catalogApi.getVendorProducts(catalogId, { limit: 50 }),
-      commerceApi.getReviewSummary("vendor", catalogId).catch(() => ({
-        averageRating: 0,
-        totalReviews: 0,
-        breakdown: {} as Record<number, number>,
-      })),
-    ])
-      .then(([v, productsRes, summary]) => {
+    setVendor(null);
+    setLoadingVendor(true);
+    setLoadingProducts(true);
+
+    catalogApi
+      .getVendor(catalogId)
+      .then((v) => {
         if (cancelled) return;
-        const logoResolved = pickVendorImage(v as any)?.trim();
-        const logoText = (v as any).logo?.trim();
-        const logoDisplay = logoResolved || logoText || "🏪";
-        const bannerIcon = logoResolved ? "🏪" : logoDisplay;
-        setVendor({
-          id: String(v.id),
-          name: (v as any).businessName || (v as any).name || "Vendor",
-          logo: logoDisplay,
-          logoColor: "#0d9488",
-          verified: Boolean(v.isActive),
-          since: "—",
-          category: "General",
-          subCategory: v.description ?? "",
-          delivery: "—",
-          rating: summary.averageRating || v.rating || 0,
-          totalRatings: summary.totalReviews,
-          phone: "",
-          email: "",
-          address: "",
-          description: v.description ?? "",
-          openHours: "—",
-          distance: "—",
-          banners: defaultBanners(v.name, bannerIcon),
-          tabs: ["Services", "About", "Gallery"],
-          products: productsRes.data.map((p) => ({
-            id: p.id,
-            name: p.name,
-            brand: (p.metadata?.brand as string) ?? "",
-            price: Number((p as any).finalPrice ?? (p as any).sellPrice ?? p.price ?? 0),
-            originalPrice:
-              p.originalPrice ??
-              Number((p as any).finalPrice ?? (p as any).sellPrice ?? p.price ?? 0),
-            rating: 0,
-            reviews: 0,
-            image: pickProductImage(p as any) || "",
-            description: p.description ?? "",
-            duration: "—",
-            category: "General",
-          })),
-        });
+        setVendor(buildVendorState(v, [], EMPTY_REVIEW_SUMMARY));
+        setLoadingVendor(false);
+        return Promise.all([
+          catalogApi.getVendorProducts(catalogId, { limit: 50 }),
+          commerceApi.getReviewSummary("vendor", catalogId).catch(() => EMPTY_REVIEW_SUMMARY),
+        ]).then(([productsRes, summary]) => ({ v, productsRes, summary }));
+      })
+      .then((pack) => {
+        if (cancelled || !pack) return;
+        const { v, productsRes, summary } = pack;
+        setVendor(buildVendorState(v, productsRes.data ?? [], summary));
       })
       .catch(() => {
         if (!cancelled) setVendor(null);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoadingVendor(false);
+          setLoadingProducts(false);
+        }
       });
 
     return () => {
@@ -572,10 +650,56 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
 
   const toggleBrand=(b:string)=>setSelectedBrands(p=>p.includes(b)?p.filter(x=>x!==b):[...p,b]);
 
-  if (loading) {
+  useEffect(() => {
+    setActiveTab(0);
+    setSearch("");
+    setCategoryChip("All Service");
+    setSelectedBrands([]);
+    setRatingFilter(null);
+    setOffersOnly(false);
+    setFilterDrawerOpen(false);
+  }, [vendorId]);
+
+  useEffect(() => {
+    autoOpenedRef.current = false;
+  }, [vendorId]);
+
+  useEffect(() => {
+    if (!autoOpenBooking || !vendor) return;
+    if (autoOpenedRef.current) return;
+    autoOpenedRef.current = true;
+    setBookingOpen(true);
+  }, [autoOpenBooking, vendor]);
+
+  const bookNowLabel =
+    prefillPrice != null && Number.isFinite(prefillPrice) && prefillPrice > 0
+      ? `Book now @ ₹${Math.round(prefillPrice)}`
+      : "Book service";
+
+  if (loadingVendor && !vendor) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 280, flexDirection: "column", gap: 12 }}>
-        <p style={{ color: "#9ca3af", fontSize: 14 }}>Loading vendor…</p>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <button
+            type="button"
+            onClick={onBack}
+            style={{
+              fontSize: 12,
+              color: "#6b7280",
+              background: "#f9fafb",
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              padding: "8px 12px",
+              cursor: "pointer",
+            }}
+          >
+            ← Back to Services
+          </button>
+          <span style={{ fontSize: 12, color: "#9ca3af" }}>Loading vendor…</span>
+        </div>
+        <div style={{ height: 200, borderRadius: 16, background: "#f3f4f6", marginBottom: 16 }} />
+        <div style={{ height: 140, borderRadius: 16, background: "#f3f4f6", marginBottom: 16 }} />
+        <ProductGridSkeleton />
       </div>
     );
   }
@@ -616,11 +740,18 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
           <button onClick={()=>{setSelectedBrands([]);setRatingFilter(null);setOffersOnly(false);}} style={{ fontSize:11,color:"#ef4444",background:"none",border:"none",cursor:"pointer",textDecoration:"underline" }}>Clear all</button>
         </div>
       )} 
-      {filtered.length===0
-        ?<div style={{ padding:"60px 20px",textAlign:"center",color:"#9ca3af",fontSize:14 }}>No products found. Try adjusting your filters.</div>
-        :<div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:14 }}>
+      {loadingProducts ? (
+        <div>
+          <p style={{ fontSize: 12, color: "#9ca3af", marginBottom: 12 }}>Loading bookable items…</p>
+          <ProductGridSkeleton />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ padding:"60px 20px",textAlign:"center",color:"#9ca3af",fontSize:14 }}>No products found. Try adjusting your filters.</div>
+      ) : (
+        <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:14 }}>
           {filtered.map(p=><ProductCard key={p.id} product={p} vendorId={vendor.id} vendorName={vendor.name}/>)}
-        </div>}
+        </div>
+      )}
     </div>
   );
 
@@ -678,7 +809,11 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
         </div> 
         <BannerCarousel banners={vendor.banners} vendorName={vendor.name}/>
  
-        <VendorInfoCard vendor={vendor}/> 
+        <VendorInfoCard
+          vendor={vendor}
+          onBookNow={() => setBookingOpen(true)}
+          bookNowLabel={bookNowLabel}
+        /> 
         <div style={{ background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)",border:"1px solid #f0f0f0" }}>
           {/* Tab bar */}
           <div style={{ display:"flex",gap:0,borderBottom:"2px solid #f0f0f0",marginBottom:18 }}>
@@ -695,6 +830,14 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
           {activeTab===2&&renderGallery()}
         </div>
       </div> 
+      <ServiceBookingModal
+        open={bookingOpen}
+        onClose={() => setBookingOpen(false)}
+        vendorId={vendor.id}
+        catalogServiceId={prefillServiceId}
+        serviceTitle={prefillServiceTitle}
+        priceHint={prefillPrice}
+      />
       {filterDrawerOpen&&(
         <div style={{ position:"fixed",inset:0,zIndex:400 }}>
           <div style={{ position:"absolute",inset:0,background:"rgba(0,0,0,0.45)" }} onClick={()=>setFilterDrawerOpen(false)}/>

@@ -5,17 +5,49 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Calendar, Clock, Loader2 } from "lucide-react";
 import { commerceApi, Booking } from "@/lib/api/commerce";
+import { catalogApi } from "@/lib/api/catalog";
 import AuthGuard from "@/providers/AuthGuard";
 
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [vendorNames, setVendorNames] = useState<Record<string, string>>({});
+  const [serviceNames, setServiceNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     commerceApi
       .getBookings({ limit: 50 })
-      .then((res) => setBookings(res.data))
+      .then(async (res) => {
+        const rows = res.data ?? [];
+        setBookings(rows);
+        const vendorIds = [...new Set(rows.map((b) => String(b.vendorId || "").trim()).filter(Boolean))];
+        const serviceIds = [...new Set(rows.map((b) => String(b.serviceId || "").trim()).filter(Boolean))];
+        const [vendors, services] = await Promise.all([
+          Promise.all(
+            vendorIds.map(async (id) => {
+              try {
+                const v = await catalogApi.getVendor(id);
+                return [id, v?.businessName || v?.name || "Service Vendor"] as const;
+              } catch {
+                return [id, "Service Vendor"] as const;
+              }
+            }),
+          ),
+          Promise.all(
+            serviceIds.map(async (id) => {
+              try {
+                const s = await catalogApi.getService(id);
+                return [id, s?.name || "Service"] as const;
+              } catch {
+                return [id, "Service"] as const;
+              }
+            }),
+          ),
+        ]);
+        setVendorNames(Object.fromEntries(vendors));
+        setServiceNames(Object.fromEntries(services));
+      })
       .catch(() => setError("Unable to load bookings"))
       .finally(() => setLoading(false));
   }, []);
@@ -56,10 +88,11 @@ export default function BookingsPage() {
           {bookings.map((b) => (
             <div
               key={b.id}
-              className="p-4 rounded-xl border bg-white flex justify-between items-center"
+              className="p-4 rounded-xl border bg-white flex justify-between items-center gap-4"
             >
-              <div>
-                <p className="font-semibold">Booking #{b.id}</p>
+              <div className="min-w-0">
+                <p className="font-semibold">{serviceNames[String(b.serviceId || "").trim()] || "Service Booking"}</p>
+                <p className="text-xs text-gray-500 mt-0.5">Vendor: {vendorNames[String(b.vendorId || "").trim()] || "Service Vendor"}</p>
                 <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
                   <span className="flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5" />
@@ -83,6 +116,7 @@ export default function BookingsPage() {
                 >
                   {b.status}
                 </span>
+                <span className="text-[10px] text-gray-400">#{String(b.id).slice(0, 8)}</span>
                 {b.status !== "cancelled" && (
                   <button
                     onClick={() => cancelBooking(b.id)}
