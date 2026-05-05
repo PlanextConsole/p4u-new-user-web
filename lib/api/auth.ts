@@ -29,7 +29,11 @@ export const authApi = {
   },
 
   refreshToken(refreshToken: string) {
-    return apiClient.post<LoginResponse>(`${BASE}/public/refresh?refreshToken=${encodeURIComponent(refreshToken)}`);
+    return apiClient.postInternal<LoginResponse>(
+      `${BASE}/public/refresh?refreshToken=${encodeURIComponent(refreshToken)}`,
+      undefined,
+      { skipAuthHeader: true, skipAuthRefresh: true },
+    );
   },
 
   logout(refreshToken: string) {

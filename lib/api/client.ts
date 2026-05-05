@@ -47,6 +47,12 @@ interface GetOptions {
   forceRefresh?: boolean;
 }
 
+interface RequestInternalOptions {
+  skipAuthHeader?: boolean;
+  skipAuthRefresh?: boolean;
+  retry401?: boolean;
+}
+
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -81,6 +87,82 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function decodeJwtExpMs(token: string): number | null {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(b64)) as { exp?: number };
+    return typeof payload.exp === "number" ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+let refreshInFlight: Promise<void> | null = null;
+
+function tokenSnapshot() {
+  if (typeof window === "undefined") return { access: null as string | null, refresh: null as string | null };
+  return {
+    access: localStorage.getItem("p4u_token"),
+    refresh: localStorage.getItem("p4u_refresh_token"),
+  };
+}
+
+function broadcastTokenUpdate() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("p4u-token-updated"));
+  }
+}
+
+async function refreshAccessToken(): Promise<void> {
+  const { refresh } = tokenSnapshot();
+  if (!refresh) throw new Error("No refresh token");
+  const url = `${BASE_URL}/api/auth/public/refresh?refreshToken=${encodeURIComponent(refresh)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+  });
+  const raw = await res.text();
+  let data: any = null;
+  try {
+    data = raw ? JSON.parse(raw) : null;
+  } catch {
+    data = { message: raw };
+  }
+  if (!res.ok) {
+    const err: ApiError = {
+      status: res.status,
+      message: data?.message ?? res.statusText ?? "Refresh failed",
+      details: data,
+    };
+    throw err;
+  }
+  const accessToken = data?.accessToken ?? data?.access_token;
+  const refreshToken = data?.refreshToken ?? data?.refresh_token;
+  const expiresIn = data?.expiresIn ?? data?.expires_in;
+  if (!accessToken) throw new Error("Refresh response missing access token");
+  if (typeof window !== "undefined") {
+    localStorage.setItem("p4u_token", String(accessToken));
+    if (refreshToken) localStorage.setItem("p4u_refresh_token", String(refreshToken));
+    if (expiresIn != null) localStorage.setItem("p4u_token_expires_in", String(expiresIn));
+  }
+  broadcastTokenUpdate();
+}
+
+async function ensureTokenFresh(): Promise<void> {
+  const { access, refresh } = tokenSnapshot();
+  if (!access || !refresh) return;
+  const expMs = decodeJwtExpMs(access);
+  if (expMs != null && expMs - Date.now() > 120_000) return;
+  if (!refreshInFlight) {
+    refreshInFlight = refreshAccessToken().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  await refreshInFlight;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Core request function                                              */
 /* ------------------------------------------------------------------ */
@@ -88,12 +170,22 @@ function authHeaders(): Record<string, string> {
 async function request<T>(
   path: string,
   options: RequestInit = {},
+  internal: RequestInternalOptions = {},
 ): Promise<T> {
+  const { skipAuthHeader = false, skipAuthRefresh = false, retry401 = false } = internal;
   const url = `${BASE_URL}${path}`;
+
+  if (!skipAuthRefresh) {
+    try {
+      await ensureTokenFresh();
+    } catch {
+      // Keep existing session; request/refresh may recover later.
+    }
+  }
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...authHeaders(),
+    ...(skipAuthHeader ? {} : authHeaders()),
     ...(options.headers as Record<string, string> | undefined),
   };
 
@@ -115,6 +207,14 @@ async function request<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    if (res.status === 401 && !skipAuthRefresh && !retry401) {
+      try {
+        await refreshAccessToken();
+        return request<T>(path, options, { ...internal, retry401: true });
+      } catch {
+        // Preserve local session; explicit logout remains user-driven.
+      }
+    }
     const envelopeError =
       body && typeof body === "object" && "error" in body
         ? (body as ErrorEnvelope).error
@@ -233,6 +333,17 @@ export const apiClient = {
 
   delete<T>(path: string) {
     return request<T>(path, { method: "DELETE" });
+  },
+
+  postInternal<T>(path: string, body?: unknown, internal?: RequestInternalOptions) {
+    return request<T>(
+      path,
+      {
+        method: "POST",
+        body: body != null ? JSON.stringify(body) : undefined,
+      },
+      internal,
+    );
   },
 
   prefetchGet(path: string, params?: Record<string, string | number | boolean>, options?: GetOptions) {

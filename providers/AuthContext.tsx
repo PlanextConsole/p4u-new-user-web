@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
+import { createContext, useCallback, useContext, useState, useEffect, ReactNode } from "react";
 import { authApi } from "@/lib/api/auth";
 import type { ApiError } from "@/lib/api/client";
 import {
@@ -39,33 +39,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const logoutRef = useRef<() => void>(() => {});
 
   const syncDisplayName = (accessToken: string | null, phone: string) => {
     setDisplayName(displayNameFromAccessToken(accessToken, phone || null));
   };
 
-  // Restore session from localStorage
-  useEffect(() => {
+  const syncSessionFromStorage = useCallback(() => {
     const savedToken = localStorage.getItem("p4u_token");
-    const phone = localStorage.getItem("p4u_phone");
-
-    if (savedToken && phone) {
-      setIsLoggedIn(true);
-      setLoggedPhone(phone);
-      setToken(savedToken);
+    const phone = localStorage.getItem("p4u_phone") || "";
+    const loggedIn = localStorage.getItem("p4u_loggedIn") === "true";
+    if (!loggedIn || !phone) return;
+    setIsLoggedIn(true);
+    setLoggedPhone(phone);
+    setToken(savedToken);
+    if (savedToken) {
       const cid =
         localStorage.getItem("p4u_customer_id") || resolveCustomerIdFromAccessToken(savedToken);
       if (cid) localStorage.setItem("p4u_customer_id", cid);
-      syncDisplayName(savedToken, phone);
-    } else if (localStorage.getItem("p4u_loggedIn") === "true" && phone) {
-      // Legacy local-only session
-      setIsLoggedIn(true);
-      setLoggedPhone(phone);
-      syncDisplayName(null, phone);
     }
-    setIsLoading(false);
+    syncDisplayName(savedToken, phone);
   }, []);
+
+  // Restore session from localStorage
+  useEffect(() => {
+    syncSessionFromStorage();
+    setIsLoading(false);
+  }, [syncSessionFromStorage]);
+
+  useEffect(() => {
+    const sync = () => syncSessionFromStorage();
+    window.addEventListener("p4u-token-updated", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("p4u-token-updated", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, [syncSessionFromStorage]);
 
   // Auto-refresh access token before Keycloak expiry (schedule from JWT `exp`, not only expires_in).
   useEffect(() => {
@@ -100,8 +109,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }, 15_000);
           return;
         }
-        // Refresh rejected (e.g. expired refresh token, revoked session) → logout.
-        logoutRef.current();
+        // Keep session mounted; retry later so users are not forced to log in again.
+        setTimeout(() => {
+          void runRefresh(true);
+        }, 60_000);
       }
     };
 
@@ -190,8 +201,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("p4u_token_expires_in");
     localStorage.removeItem("p4u_customer_id");
   }
-
-  logoutRef.current = logout;
 
   return (
     <AuthContext.Provider
