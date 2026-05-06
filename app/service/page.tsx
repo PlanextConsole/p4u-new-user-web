@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ServiceListPage  from "@/app/service/ServiceListPage";
@@ -9,8 +10,18 @@ import { Seller } from "@/app/service/serviceData";
 import { resolveVendorIdForCatalogService } from "@/lib/catalog/resolveServiceVendor";
 
 export default function ShopRoute() {
-  const [view, setView] = useState<"list" | "vendor">("list");
-  const [vendorId, setVendorId] = useState<string | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedVendorId = useMemo(() => {
+    const raw = searchParams.get("vendorId");
+    return raw ? raw.trim() : "";
+  }, [searchParams]);
+  const [view, setView] = useState<"list" | "vendor">(
+    requestedVendorId ? "vendor" : "list",
+  );
+  const [vendorId, setVendorId] = useState<string | null>(
+    requestedVendorId || null,
+  );
   const [busyServiceId, setBusyServiceId] = useState<string | null>(null);
   const [navMessage, setNavMessage] = useState<string | null>(null);
   const [bookingPrefill, setBookingPrefill] = useState<{
@@ -18,6 +29,15 @@ export default function ShopRoute() {
     title: string;
     price: number;
   } | null>(null);
+
+  useEffect(() => {
+    if (requestedVendorId) {
+      setView("vendor");
+      setVendorId(requestedVendorId);
+      setBookingPrefill(null);
+      setNavMessage(null);
+    }
+  }, [requestedVendorId]);
 
   const handleSelectSeller = async (seller: Seller) => {
     setNavMessage(null);
@@ -65,6 +85,9 @@ export default function ShopRoute() {
     setVendorId(null);
     setBookingPrefill(null);
     setNavMessage(null);
+    if (requestedVendorId) {
+      router.replace("/service");
+    }
     window.scrollTo(0, 0);
   };
 

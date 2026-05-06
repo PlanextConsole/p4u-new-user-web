@@ -196,9 +196,7 @@ function unwrapList<T>(res: unknown): T[] {
 export default function ServiceListPage({ onSelectSeller, busyServiceId }: ServiceListPageProps) {
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [rootCategories, setRootCategories] = useState<Category[]>([]);
-  const [subcategories, setSubcategories] = useState<Category[]>([]);
   const [parentCategoryId, setParentCategoryId] = useState("");
-  const [subcategoryId, setSubcategoryId] = useState("");
   const [ratingFilter,     setRatingFilter]     = useState<number[]>([]);
   const [reviewFilter,     setReviewFilter]     = useState<string[]>([]);
   const [offerFilter,      setOfferFilter]      = useState<string[]>([]);
@@ -222,27 +220,12 @@ export default function ServiceListPage({ onSelectSeller, busyServiceId }: Servi
   }, []);
 
   useEffect(() => {
-    if (!parentCategoryId) {
-      setSubcategories([]);
-      setSubcategoryId("");
-      return;
-    }
-    catalogApi.getCategoryChildren(parentCategoryId, { kind: "service" }).then((res) => {
-      const list = unwrapList<Category>(res);
-      setSubcategories(list);
-      setSubcategoryId("");
-    }).catch(() => setSubcategories([]));
-  }, [parentCategoryId]);
-
-  useEffect(() => {
     const params: {
       limit: number;
       offset: number;
       categoryId?: string;
-      subcategoryId?: string;
     } = { limit: 200, offset: 0 };
-    if (subcategoryId.trim()) params.subcategoryId = subcategoryId.trim();
-    else if (parentCategoryId.trim()) params.categoryId = parentCategoryId.trim();
+    if (parentCategoryId.trim()) params.categoryId = parentCategoryId.trim();
 
     catalogApi.getServices(params).then((res) => {
       const rows = res.data ?? [];
@@ -268,7 +251,7 @@ export default function ServiceListPage({ onSelectSeller, busyServiceId }: Servi
       };
       }));
     }).catch(() => setSellers([]));
-  }, [parentCategoryId, subcategoryId]);
+  }, [parentCategoryId]);
 
   const mkToggleStr = (setter: React.Dispatch<React.SetStateAction<string[]>>) => (val: string) => {
     setter(p => p.includes(val) ? p.filter(x => x !== val) : [...p, val]);
@@ -364,19 +347,6 @@ export default function ServiceListPage({ onSelectSeller, busyServiceId }: Servi
                   >
                     <option value="">All categories</option>
                     {rootCategories.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={subcategoryId}
-                    onChange={(e) => { setSubcategoryId(e.target.value); setPage(1); }}
-                    disabled={!parentCategoryId || subcategories.length === 0}
-                    style={{ fontSize:12,padding:"6px 10px",borderRadius:8,border:"1px solid #e5e7eb",maxWidth:200,opacity:!parentCategoryId||subcategories.length===0?0.5:1 }}
-                  >
-                    <option value="">
-                      {parentCategoryId ? (subcategories.length ? "All subcategories" : "No subcategories") : "Subcategory"}
-                    </option>
-                    {subcategories.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>

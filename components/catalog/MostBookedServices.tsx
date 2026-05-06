@@ -6,157 +6,14 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { catalogApi } from "@/lib/api/catalog";
 import { pickServiceImage, resolveMediaUrl } from "@/lib/media";
-import { resolveCatalogUnitPrice } from "@/lib/catalog/resolvePrice";
 
-import lamp from "../../images/home-services/lamp.png";
-import kitchen from "../../images/home-services/kitchenapplication.png";
 import homeApp from "../../images/home-services/home-application-left.png";
-import flower from "../../images/home-services/flower-stand.png";
-import coffee from "../../images/home-services/cofeemaker.png";
-import sofa from "../../images/home-services/sofa-chair.png";
-import pot from "../../images/home-services/pot.png";
-import socket from "../../images/home-services/socket.png";
-
-const FALLBACK_SERVICES = [
-  {
-    id: 1,
-    image: socket,
-    title: "Switch/Socket repair & replacement",
-    rating: 4.8,
-    reviews: 2847,
-    price: 79,
-    originalPrice: 150,
-    duration: "20mins",
-    description: "Repair or replacement using quality (Anchor)",
-    offer: "50% OFF",
-  },
-  {
-    id: 2,
-    image: socket,
-    title: "Switch/Socket repair & replacement",
-    rating: 4.8,
-    reviews: 2847,
-    price: 79,
-    originalPrice: 150,
-    duration: "20mins",
-    description: "Repair or replacement using quality to wall",
-    offer: "50% OFF",
-  },
-  {
-    id: 3,
-    image: socket,
-    title: "Switch/Socket repair & replacement",
-    rating: 4.8,
-    reviews: 2847,
-    price: 79,
-    originalPrice: 150,
-    duration: "20mins",
-    description: "Repair or replacement using existing to wall",
-    offer: "50% OFF",
-  },
-  {
-    id: 4,
-    image: socket,
-    title: "Switch/Socket repair & replacement",
-    rating: 4.8,
-    reviews: 2847,
-    price: 79,
-    originalPrice: 150,
-    duration: "20mins",
-    description: "Repair or replacement using existing to wall",
-    offer: "50% OFF",
-  },
-  {
-    id: 5,
-    image: socket,
-    title: "Switch/Socket repair & replacement",
-    rating: 4.8,
-    reviews: 2847,
-    price: 79,
-    originalPrice: 150,
-    duration: "20mins",
-    description: "Repair or replacement using existing to wall",
-    offer: "50% OFF",
-  },
-  {
-    id: 6,
-    image: socket,
-    title: "Switch/Socket repair & replacement",
-    rating: 4.8,
-    reviews: 2847,
-    price: 79,
-    originalPrice: 150,
-    duration: "20mins",
-    description: "Repair or replacement using existing to wall",
-    offer: "50% OFF",
-  },
-  {
-    id: 7,
-    image: socket,
-    title: "Switch/Socket repair & replacement",
-    rating: 4.8,
-    reviews: 2847,
-    price: 79,
-    originalPrice: 150,
-    duration: "20mins",
-    description: "Repair or replacement using existing to wall",
-    offer: "50% OFF",
-  },
-  {
-    id: 8,
-    image: socket,
-    title: "Switch/Socket repair & replacement",
-    rating: 4.8,
-    reviews: 2847,
-    price: 79,
-    originalPrice: 150,
-    duration: "20mins",
-    description: "Repair or replacement using existing to wall",
-    offer: "50% OFF",
-  },
-  {
-    id: 9,
-    image: socket,
-    title: "Switch/Socket repair & replacement",
-    rating: 4.8,
-    reviews: 2847,
-    price: 79,
-    originalPrice: 150,
-    duration: "20mins",
-    description: "Repair or replacement using existing to wall",
-    offer: "50% OFF",
-  },
-  {
-    id: 10,
-    image: socket,
-    title: "Switch/Socket repair & replacement",
-    rating: 4.8,
-    reviews: 2847,
-    price: 79,
-    originalPrice: 150,
-    duration: "20mins",
-    description: "Repair or replacement using existing to wall",
-    offer: "50% OFF",
-  },
-];
-
-const FALLBACK_HOME_SERVICES = [
-  { name: "Soft chairs", price: "₹1,499", image: sofa },
-  { name: "Sofa & chair", price: "₹1,499", image: sofa },
-  { name: "Kitchen dishes", price: "₹1,499", image: pot },
-  { name: "Smart watches", price: "₹1,499", image: lamp },
-  { name: "Kitchen mixer", price: "₹1,499", image: kitchen },
-  { name: "Blenders", price: "₹1,499", image: coffee },
-  { name: "Home appliance", price: "₹1,499", image: lamp },
-  { name: "Coffee maker", price: "₹1,499", image: flower },
-];
-
-const HOME_IMG_MAP: Record<number, any> = { 0: sofa, 1: sofa, 2: pot, 3: lamp, 4: kitchen, 5: coffee, 6: lamp, 7: flower };
 
 export default function ServiceComponents() {
+  const SHOW_HOME_SERVICES = false;
   const router = useRouter();
-  const [mostBookedServices, setMostBookedServices] = useState<{ id: string | number; image: string | typeof socket; title: string; rating: number; reviews: number; price: number; originalPrice: number; duration: string; description: string; offer: string }[]>([]);
-  const [homeServices, setHomeServices] = useState<{ id: string; vendorId: string; name: string; price: string; image: any }[]>([]);
+  const [mostBookedServices, setMostBookedServices] = useState<{ id: string | number; image: string; title: string; rating: number; reviews: number; price: number; originalPrice: number; duration: string; description: string; offer: string }[]>([]);
+  const [homeServices, setHomeServices] = useState<{ id: string; vendorId: string; name: string; price: string; image: string }[]>([]);
 
   useEffect(() => {
     catalogApi
@@ -171,28 +28,20 @@ export default function ServiceComponents() {
               vendorId: String((s as any).vendorId ?? ""),
               name: s.name,
               price: unit > 0 ? `₹${unit.toLocaleString("en-IN")}` : "",
-              image: pickServiceImage(s as any) || HOME_IMG_MAP[idx % 8] || sofa,
+              image: pickServiceImage(s as any) || "",
             };
           }),
         );
       })
       .catch(() => {
-        setHomeServices(
-          FALLBACK_HOME_SERVICES.map((s, idx) => ({
-            id: `fallback-${idx}`,
-            vendorId: "",
-            name: s.name,
-            price: s.price,
-            image: s.image,
-          })),
-        );
+        setHomeServices([]);
       });
 
     catalogApi.getServices({ limit: 10 }).then((res) => {
       setMostBookedServices(
-        (res.data?.length ? res.data : FALLBACK_SERVICES as any[]).map((s) => ({
+        (res.data ?? []).map((s) => ({
           id: s.id,
-          image: pickServiceImage(s as any) || socket,
+          image: pickServiceImage(s as any) || "",
           title: s.name || "Service",
           rating: 0,
           reviews: 0,
@@ -206,7 +55,7 @@ export default function ServiceComponents() {
         })),
       );
     }).catch(() => {
-      setMostBookedServices(FALLBACK_SERVICES);
+      setMostBookedServices([]);
     });
   }, []);
 
@@ -216,11 +65,16 @@ export default function ServiceComponents() {
         <h2 className="text-xl sm:text-2xl lg:text-3xl mb-2   font-bold">
           Most Booked services
         </h2>
+        {mostBookedServices.length === 0 ? (
+          <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-500">
+            No booked services available.
+          </div>
+        ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 lg:gap-4">
           {mostBookedServices.map((service) => (
             <div
               key={service.id}
-              className="bg-white rounded-lg border p-2 border-gray-200 overflow-hidden hover:shadow-lg transition-shadow"
+              className="bg-white rounded-lg border p-2 border-gray-200 overflow-hidden hover:shadow-lg transition-shadow flex flex-col min-h-[315px]"
             >
               {/* Image Container */}
               <div className="relative bg-gray-100 h-32 sm:h-36 lg:h-40">
@@ -228,15 +82,17 @@ export default function ServiceComponents() {
                   <Heart className="w-3.5 h-3.5 lg:w-4 lg:h-4 text-gray-400" />
                 </button>
 
-                <img
-                  src={
-                    typeof service.image === "string"
-                      ? (resolveMediaUrl(service.image) || service.image)
-                      : ((service.image as any)?.src || "")
-                  }
-                  alt={service.title}
-                  className="w-full h-full object-cover"
-                />
+                {service.image ? (
+                  <img
+                    src={resolveMediaUrl(service.image) || service.image}
+                    alt={service.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-slate-100 text-slate-500 text-xs flex items-center justify-center">
+                    No image
+                  </div>
+                )}
  
                 <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-white rounded px-1.5 py-0.5 shadow-sm">
                   <Star className="w-3 h-3 fill-orange-400 text-orange-400" />
@@ -246,7 +102,7 @@ export default function ServiceComponents() {
                 </div>
               </div>
  
-              <div className="p-2.5 lg:p-3">
+              <div className="p-2.5 lg:p-3 flex flex-col flex-1">
                 {/* Title */}
                 <h3 className="font-semibold text-xs lg:text-sm leading-tight line-clamp-2 mb-2 min-h-[32px]">
                   {service.title}
@@ -272,13 +128,15 @@ export default function ServiceComponents() {
                   {service.description}
                 </p>
  
-                <div className="mb-2">
-                  <span className="inline-block bg-green-500 text-white px-2 py-0.5 text-xs rounded font-medium">
-                    {service.offer}
-                  </span>
-                </div> 
+                {service.offer ? (
+                  <div className="mb-2">
+                    <span className="inline-block bg-green-500 text-white px-2 py-0.5 text-xs rounded font-medium">
+                      {service.offer}
+                    </span>
+                  </div>
+                ) : null}
                 <button
-                  className="w-full py-1.5 lg:py-2 border border-teal-500 text-teal-600 rounded text-xs lg:text-sm font-medium hover:bg-teal-50 transition-colors"
+                  className="w-full py-1.5 lg:py-2 border border-teal-500 text-teal-600 rounded text-xs lg:text-sm font-medium hover:bg-teal-50 transition-colors mt-auto"
                   onClick={() => router.push("/service")}
                 >
                   Book now
@@ -287,7 +145,9 @@ export default function ServiceComponents() {
             </div>
           ))}
         </div>
+        )}
       </section> 
+    {SHOW_HOME_SERVICES && (
     <section className="my-6"> 
         <div className="block lg:hidden mb-4">
           <h2 className="text-xl sm:text-2xl font-bold">Home Services</h2>
@@ -331,21 +191,24 @@ export default function ServiceComponents() {
                   </p>
                 </div>
                 <div className="flex-1 flex items-center justify-end">
-                  <img
-                    src={
-                      typeof service.image === "string"
-                        ? (resolveMediaUrl(service.image) || service.image)
-                        : ((service.image as any)?.src || "")
-                    }
-                    alt={service.name}
-                    className="object-contain max-w-full max-h-full w-[90px] h-[90px]"
-                  />
+                  {service.image ? (
+                    <img
+                      src={resolveMediaUrl(service.image) || service.image}
+                      alt={service.name}
+                      className="object-contain max-w-full max-h-full w-[90px] h-[90px]"
+                    />
+                  ) : (
+                    <div className="w-[90px] h-[90px] rounded-md bg-slate-100 text-slate-500 text-xs flex items-center justify-center">
+                      No image
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           ))}
         </div>
       </section>
+    )}
     </div>
   );
 }

@@ -4,77 +4,30 @@ import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { catalogApi } from "@/lib/api/catalog";
 import { pickVendorImage, resolveMediaUrl } from "@/lib/media";
-import plumbing1 from "../../images/top-servicer/plumbing1.png";
-import plumbing2 from "../../images/top-servicer/plumbing2.png";
-import wedding1 from "../../images/top-servicer/wedding1.png";
-import wedding2 from "../../images/top-servicer/plumbing1.png";
-
-const FALLBACK_SERVICES = [
-  {
-    image: plumbing1,
-    badge: "New Arrival",
-    title: "Selvam Plumbing & Electrical",
-    provider: "Pro Plumbing Solutions",
-    rating: 4.8,
-    duration: "1-2 hours",
-    description: "Quick fixes for leaks, clogs,...",
-    price: 49,
-    distance: "1.5 km",
-  },
-  {
-    image: plumbing2,
-    badge: null,
-    title: "J.M. Plumbing Works",
-    provider: "Pro Plumbing Solutions",
-    rating: 4.8,
-    duration: "1-2 hours",
-    description: "Quick fixes for leaks, clogs,...",
-    price: 49,
-    distance: "1.5 km",
-  },
-  {
-    image: wedding1,
-    badge: null,
-    title: "Wedding Event Planning",
-    provider: "Dream Events",
-    rating: 4.8,
-    duration: "Full day",
-    description: "Complete wedding planning and co...",
-    price: 49,
-    distance: "1.5 km",
-  },
-  {
-    image: wedding2,
-    badge: null,
-    title: "Wedding Event Planning",
-    provider: "Dream Events",
-    rating: 4.8,
-    duration: "Full day",
-    description: "Complete wedding planning and co...",
-    price: 49,
-    distance: "1.5 km",
-  },
-];
 
 export default function TopServicer() {
   const router = useRouter();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [services, setServices] = useState<{ image: string | typeof plumbing1; badge: string | null; title: string; provider: string; rating: number; duration: string; description: string; price: number; distance: string }[]>([]);
+  const [services, setServices] = useState<{ id: string; image: string; badge: string | null; title: string; provider: string; rating: number; duration: string; description: string; price: number; distance: string }[]>([]);
 
   useEffect(() => {
     catalogApi.getVendors({ limit: 8, vendorKind: "service" }).then((res) => {
-      setServices(res.data.map((v) => ({
-        image: pickVendorImage(v as any) || (v as any).logoUrl || (v as any).logo || plumbing1,
+      const mapped = (res.data ?? []).map((v) => ({
+        id: String(v.id),
+        image: pickVendorImage(v as any) || (v as any).logoUrl || (v as any).logo || "",
         badge: null,
         title: v.businessName || v.name || "Vendor",
-        provider: v.description ?? v.businessName ?? v.name ?? "",
-        rating: v.rating ?? 0,
-        duration: "",
-        description: v.description ?? "",
+        provider: v.ownerName || v.description || "Professional vendor",
+        rating: Number(v.rating ?? 4.8),
+        duration: "Fast service",
+        description: v.description ?? "Trusted local service provider",
         price: 0,
-        distance: "",
-      })));
-    }).catch(() => {});
+        distance: "Service available",
+      }));
+      setServices(mapped);
+    }).catch(() => {
+      setServices([]);
+    });
   }, []);
 
   const scroll = (direction: "left" | "right") => {
@@ -100,7 +53,7 @@ export default function TopServicer() {
           <div className="px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 pb-4 sm:pb-6"> 
             <div className="flex items-center justify-between mb-4 sm:mb-6">
               <h2 className="text-xl sm:text-2xl lg:text-3xl text-white font-bold">
-                Top Services
+                Top Vendors
               </h2>
               <div className="flex gap-2 sm:gap-3">
                 <button
@@ -125,26 +78,33 @@ export default function TopServicer() {
                 </button>
               </div>
             </div> 
-            <div
-              ref={scrollRef}
-              className="flex gap-3 sm:gap-4 lg:gap-5 overflow-x-auto scrollbar-hide pb-2"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-            >
-              {services.map((service, index) => (
+            {services.length === 0 ? (
+              <div className="rounded-xl border border-white/30 bg-white/10 text-white text-sm px-4 py-5">
+                No top services available right now.
+              </div>
+            ) : (
+              <div
+                ref={scrollRef}
+                className="flex gap-3 sm:gap-4 lg:gap-5 overflow-x-auto scrollbar-hide pb-2"
+                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+              >
+                {services.map((service, index) => (
                 <div
                   key={index}
                   className="flex-shrink-0 w-[260px] sm:w-[340px] lg:w-[400px] bg-white rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] cursor-pointer"
                 > 
                   <div className="relative h-[160px] sm:h-[200px] lg:h-[220px]">
-                    <img
-                      src={
-                        typeof service.image === "string"
-                          ? (resolveMediaUrl(service.image) || service.image)
-                          : ((service.image as any)?.src || "")
-                      }
-                      alt={service.title}
-                      className="w-full h-full object-cover"
-                    />
+                    {service.image ? (
+                      <img
+                        src={resolveMediaUrl(service.image) || service.image}
+                        alt={service.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-slate-200 text-slate-500 text-xs flex items-center justify-center">
+                        No image
+                      </div>
+                    )}
                     {service.badge && (
                       <div
                         className="absolute top-3 sm:top-4 left-3 sm:left-4 px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-white text-xs sm:text-sm font-medium backdrop-blur-md border-2 border-white shadow-lg overflow-hidden"
@@ -210,15 +170,18 @@ export default function TopServicer() {
 
                     <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
                       <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                      <span>{service.duration}</span>
+                      <span>{service.duration || "Fast service"}</span>
                     </div>
 
                     <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4 line-clamp-2">
                       {service.description}
                     </p>
+                    {service.price > 0 && (
+                      <p className="text-sm font-semibold text-slate-900 mb-3">From ₹{service.price.toLocaleString("en-IN")}</p>
+                    )}
 <button
   type="button"
-  onClick={() => router.push("/service")}
+  onClick={() => router.push(service.id ? `/service?vendorId=${encodeURIComponent(service.id)}` : "/service")}
   className="w-full py-2 sm:py-2.5 text-white text-xs sm:text-sm font-medium transition-all hover:opacity-90"
   style={{
     borderRadius: "10px",
@@ -232,8 +195,9 @@ export default function TopServicer() {
 
                   </div>
                 </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

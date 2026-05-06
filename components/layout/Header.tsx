@@ -155,6 +155,7 @@ export default function Header({ onCartOpen }: HeaderProps) {
   }
 
   function CartBadge({ size = "sm" }: { size?: "sm" | "lg" }) {
+    if (totalItems <= 0) return null;
     const dim = size === "lg" ? "w-5 h-5" : "w-4 h-4";
     return (
       <div

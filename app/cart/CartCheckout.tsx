@@ -6,6 +6,7 @@ import {
   Shield, Check, Eye, Loader2,
 } from "lucide-react";
 import { useCart } from "@/providers/CartContext";
+import { useAuth } from "@/providers/AuthContext";
 import { commerceApi } from "@/lib/api/commerce";
 import { paymentsApi } from "@/lib/api/payments";
 import type { ApiError } from "@/lib/api/client";
@@ -18,6 +19,14 @@ function messageFromApiError(e: unknown, fallback: string): string {
     if (typeof m === "string" && m.trim()) return m;
   }
   return fallback;
+}
+
+function isUnauthorizedError(e: unknown): boolean {
+  if (typeof e !== "object" || e == null) return false;
+  const status = "status" in e ? Number((e as ApiError).status) : 0;
+  if (status === 401) return true;
+  const msg = "message" in e ? String((e as ApiError).message || "") : "";
+  return /unauthorized|invalid or missing token|missing token|invalid token/i.test(msg);
 }
  
 const PRIMARY_MID  = "#009999";
@@ -143,6 +152,7 @@ export default function CartCheckout({
   onBack?: () => void;
   address?: string;
 }) {
+  const { logout } = useAuth();
   const pageRef = useRef<HTMLDivElement>(null);
   const { runWithLoading } = useAppLoading();
   const { items: cartItems, removeFromCart, updateQty, clearCart } = useCart();
@@ -195,7 +205,8 @@ export default function CartCheckout({
       await runWithLoading(async () => {
         const token = typeof window !== "undefined" ? localStorage.getItem("p4u_token") : null;
         if (!token) {
-          setOrderError("Please sign in to place an order.");
+          setOrderError("Session expired. Please sign in again.");
+          window.dispatchEvent(new Event("p4u-open-auth"));
           return;
         }
         // Replace server cart with current UI cart (PUT), then create order from that cart
@@ -256,6 +267,14 @@ export default function CartCheckout({
         scrollToTop();
       });
     } catch (e: unknown) {
+      if (isUnauthorizedError(e)) {
+        logout();
+        setOrderError("Session expired. Please sign in again.");
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("p4u-open-auth"));
+        }
+        return;
+      }
       setOrderError(
         messageFromApiError(e, "Failed to place order. Please try again."),
       );
