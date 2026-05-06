@@ -1,6 +1,7 @@
 import Header from '@/components/layout/Header';
 import Navigation from '@/components/layout/Navigation';
 import HeroSlider from '@/components/home/HeroSlider';
+import HomepageCmsBlocks from '@/components/home/HomepageCmsBlocks';
 import ServiceCards from '@/components/home/ServiceCards';
 import BestProducts from '@/components/home/BestProducts';
 import BrandSections from '@/components/home/BrandSections';
@@ -18,6 +19,7 @@ export default function Home() {
       <Header />
       {/* <Navigation /> */}
       <HeroSlider />
+      <HomepageCmsBlocks />
       <ServiceCards />
       <BestProducts />
       <BrandSections />

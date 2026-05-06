@@ -149,6 +149,7 @@ export default function CartCheckout({
   const [step, setStep]               = useState<number>(0);
   const [placing, setPlacing]         = useState<boolean>(false);
   const [orderError, setOrderError]   = useState<string | null>(null);
+  const [placedAmount, setPlacedAmount] = useState<number>(0);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date(2026, 10, 11));
   const [weekBase, setWeekBase]       = useState<Date>(new Date(2026, 10, 7));
   const [selectedTime, setSelectedTime] = useState<string>("morning");
@@ -183,8 +184,8 @@ export default function CartCheckout({
   const weekDays   = useMemo(() => getWeekDays(weekBase), [weekBase]);
 
   const scrollToTop = useCallback(() => {
-    pageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    pageRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
+    window.scrollTo({ top: 0, behavior: "auto" });
   }, []);
 
   async function placeOrder() {
@@ -205,6 +206,11 @@ export default function CartCheckout({
               quantity: i.qty,
               unitPrice: i.price,
               vendorId: i.vendorId || null,
+              metadata: {
+                productName: i.name,
+                vendorName: i.vendor,
+                ...((i.imageUrl || i.image) ? { productImage: i.imageUrl || i.image } : {}),
+              },
             })),
           );
         }
@@ -244,6 +250,7 @@ export default function CartCheckout({
           }
         }
 
+        setPlacedAmount(total);
         clearCart();
         setStep(2);
         scrollToTop();
@@ -681,7 +688,7 @@ export default function CartCheckout({
             Order Confirmed
           </div>
           <h2 style={{ fontSize: 16, fontWeight: 700, color: "#1f2937", margin: "0 0 4px" }}>
-            Your order of {formatPrice(itemTotal)}
+            Your order of {formatPrice(placedAmount || itemTotal)}
           </h2>
           <p style={{ fontSize: 16, fontWeight: 700, color: "#1f2937", margin: "0 0 32px" }}>has been successfully placed!</p>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>

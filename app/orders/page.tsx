@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Package, Loader2 } from "lucide-react";
@@ -10,6 +11,21 @@ import AuthGuard from "@/providers/AuthGuard";
 import { useAuth } from "@/providers/AuthContext";
 import { resolveCustomerIdFromAccessToken } from "@/lib/resolveCustomerId";
 import { pickProductImage, resolveMediaUrl } from "@/lib/media";
+import { downloadOrderInvoice } from "@/lib/invoice";
+
+function looksLikeUuidText(v: unknown): boolean {
+  const s = String(v || "").trim();
+  if (!s) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+}
+
+function isUnsafeProductName(v: unknown): boolean {
+  const s = String(v || "").trim();
+  if (!s) return true;
+  if (looksLikeUuidText(s)) return true;
+  if (/^product\s*#\s*[0-9a-f-]{8,}$/i.test(s)) return true;
+  return false;
+}
 
 export default function OrdersPage() {
   const { isLoggedIn, isLoading: authLoading } = useAuth();
@@ -81,9 +97,12 @@ export default function OrdersPage() {
           ...o,
           items: (o.items || []).map((i: any) => {
             const ref = productMap.get(String(i.productId || "").trim());
+            const fallbackName = ref?.name || "";
+            const rawName = String(i.productName || "").trim();
+            const safeName = !isUnsafeProductName(rawName) ? rawName : fallbackName || "Product";
             return {
               ...i,
-              productName: i.productName || ref?.name || `Product #${i.productId}`,
+              productName: safeName,
               productImage: i.productImage || ref?.image || "",
             };
           }),
@@ -153,6 +172,23 @@ export default function OrdersPage() {
                   >
                     {o.status}
                   </span>
+                  <button
+                    onClick={() =>
+                      downloadOrderInvoice(
+                        { id: String(o.id), createdAt: o.createdAt, status: o.status, totalAmount: Number(o.totalAmount || 0) },
+                        (o.items || []).map((x: any) => ({
+                          name: String(x.productName || "Product"),
+                          qty: Number(x.quantity || 1),
+                          unitPrice: Number(x.unitPrice || x.price || 0),
+                          totalPrice: Number(x.unitPrice || x.price || 0) * Number(x.quantity || 1),
+                        })),
+                        `Order_Invoice_${String(o.id).slice(0, 8)}`,
+                      )
+                    }
+                    className="block ml-auto mt-2 text-xs text-teal-700 hover:underline"
+                  >
+                    Download Invoice
+                  </button>
                 </div>
               </div>
 
@@ -170,8 +206,32 @@ export default function OrdersPage() {
                         ) : null}
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-gray-800 font-medium">{item.productName ?? `Product #${item.productId}`}</p>
+                        <p className="truncate text-gray-800 font-medium">{item.productName || "Product"}</p>
                         <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
+                        <div className="flex items-center gap-3 mt-1">
+                          <Link href={`/orders/${encodeURIComponent(String(o.id))}`} className="text-xs text-teal-700 hover:underline">
+                            View Details
+                          </Link>
+                          <button
+                            onClick={() =>
+                              downloadOrderInvoice(
+                                { id: String(o.id), createdAt: o.createdAt, status: o.status },
+                                [
+                                  {
+                                    name: String(item.productName || "Product"),
+                                    qty: Number(item.quantity || 1),
+                                    unitPrice: Number(item.unitPrice || item.price || 0),
+                                    totalPrice: Number(item.unitPrice || item.price || 0) * Number(item.quantity || 1),
+                                  },
+                                ],
+                                `Item_Invoice_${String(o.id).slice(0, 8)}`,
+                              )
+                            }
+                            className="text-xs text-slate-600 hover:underline"
+                          >
+                            Invoice
+                          </button>
+                        </div>
                       </div>
                     </div>
                     <span className="shrink-0">&#8377;{(Number(item.unitPrice || item.price || 0) * Number(item.quantity || 1)).toFixed(0)}</span>

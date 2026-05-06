@@ -7,21 +7,61 @@ const BASE = "/api/v1/content";
 /* ------------------------------------------------------------------ */
 
 export interface Banner {
-  id: number;
+  id: number | string;
   title?: string;
   image?: string;
   imageUrl?: string;
   link?: string;
   redirectUrl?: string;
+  sortOrder?: number;
   isActive: boolean;
+  metadata?: {
+    homepageCMS?: boolean;
+    cmsSlot?: "hero" | "content" | "video" | string;
+    subtitle?: string;
+    mediaType?: "image" | "video" | string;
+    sectionType?: string;
+    desktopImageUrl?: string;
+    mobileImageUrl?: string;
+    videoUrl?: string;
+    thumbnailUrl?: string;
+    durationSec?: number;
+    ctaText?: string;
+    ctaLink?: string;
+    redirectType?: "external" | "internal" | string;
+    redirectId?: string;
+    linkType?: string;
+    linkTarget?: string;
+    targetLocation?: string;
+    targetSegment?: string;
+    themeHeaderColor?: string;
+    themeBgColor?: string;
+    themeButtonColor?: string;
+    backgroundGradient?: string;
+    festivalTag?: string;
+    displayMode?: string;
+    showAfterSeconds?: number;
+    autoExpandFullscreen?: boolean;
+    startDate?: string;
+    endDate?: string;
+  };
 }
 
 export interface Popup {
-  id: number;
+  id: number | string;
   title?: string;
   image?: string;
+  imageUrl?: string;
   content?: string;
+  redirectUrl?: string;
   isActive: boolean;
+  validFrom?: string | null;
+  validTo?: string | null;
+  metadata?: {
+    appType?: string;
+    screenId?: string;
+    [key: string]: unknown;
+  } | null;
 }
 
 export interface Reel {

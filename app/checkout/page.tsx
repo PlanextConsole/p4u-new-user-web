@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { CreditCard, Tag, Loader2, ShoppingBag, CheckCircle, XCircle } from "lucide-react";
@@ -75,9 +76,11 @@ function messageFromApiError(e: unknown, fallback: string): string {
 }
 
 export default function CheckoutPage() {
+  const searchParams = useSearchParams();
   const { runWithLoading } = useAppLoading();
   const { isLoggedIn } = useAuth();
   const { items, clearCart } = useCart();
+  const [buyNowItem, setBuyNowItem] = useState<any>(null);
   const [coupon, setCoupon] = useState("");
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [quote, setQuote] = useState<CheckoutQuote | null>(null);
@@ -86,7 +89,23 @@ export default function CheckoutPage() {
   const [orderStatus, setOrderStatus] = useState<"idle" | "success" | "failed" | "pending">("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+  useEffect(() => {
+    const mode = searchParams.get("mode");
+    if (mode !== "buy-now") {
+      setBuyNowItem(null);
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem("p4u_buy_now_item");
+      const parsed = raw ? JSON.parse(raw) : null;
+      setBuyNowItem(parsed && typeof parsed === "object" ? parsed : null);
+    } catch {
+      setBuyNowItem(null);
+    }
+  }, [searchParams]);
+
+  const checkoutItems = buyNowItem ? [buyNowItem] : items;
+  const subtotal = checkoutItems.reduce((s, i) => s + i.price * i.qty, 0);
 
   const fetchQuote = useCallback(async (discount = couponDiscount) => {
     if (!subtotal) return;
@@ -107,10 +126,10 @@ export default function CheckoutPage() {
   }, [subtotal, couponDiscount]);
 
   useEffect(() => {
-    if (items.length > 0) {
+    if (checkoutItems.length > 0) {
       fetchQuote();
     }
-  }, [items.length, subtotal]);
+  }, [checkoutItems.length, subtotal]);
 
   const applyCoupon = async () => {
     const code = coupon.trim();
@@ -152,9 +171,9 @@ export default function CheckoutPage() {
       }
 
       await runWithLoading(async () => {
-        if (items.length > 0) {
+        if (checkoutItems.length > 0) {
           await commerceApi.updateCart(
-            items.map((i) => ({
+            checkoutItems.map((i) => ({
               productId: i.productId ?? i.id,
               quantity: i.qty,
               unitPrice: i.price,
@@ -194,7 +213,12 @@ export default function CheckoutPage() {
                   razorpay_signature: resp.razorpay_signature,
                 });
                 if (result.verified) {
-                  clearCart();
+                  if (!buyNowItem) clearCart();
+                  try {
+                    sessionStorage.removeItem("p4u_buy_now_item");
+                  } catch {
+                    // ignore storage errors
+                  }
                   setOrderStatus("success");
                 } else {
                   setOrderStatus("failed");
@@ -280,7 +304,7 @@ export default function CheckoutPage() {
         <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-8">
           <h1 className="text-2xl font-bold mb-6">Checkout</h1>
 
-          {!isLoggedIn && items.length > 0 && (
+          {!isLoggedIn && checkoutItems.length > 0 && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               Sign in to complete payment.{" "}
               <button
@@ -293,7 +317,7 @@ export default function CheckoutPage() {
             </div>
           )}
 
-          {items.length === 0 ? (
+          {checkoutItems.length === 0 ? (
             <p className="text-center text-gray-400 py-20">Your cart is empty.</p>
           ) : (
             <div className="space-y-6">
@@ -301,7 +325,7 @@ export default function CheckoutPage() {
                 <h2 className="font-semibold flex items-center gap-2">
                   <ShoppingBag className="w-5 h-5" /> Order Summary
                 </h2>
-                {items.map((item) => (
+                {checkoutItems.map((item) => (
                   <div key={item.id} className="flex justify-between text-sm">
                     <span>
                       {item.name} x {item.qty}

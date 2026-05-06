@@ -7,6 +7,7 @@ import {
 } from "./serviceData";
 import { catalogApi, type Category } from "@/lib/api/catalog";
 import { pickServiceImage } from "@/lib/media";
+import { addServiceWishlist, getServiceWishlist, removeServiceWishlist } from "@/lib/serviceWishlist";
 
 const IC = {
   Star:      ({ fill="#f59e0b",size=13 }:{ fill?:string;size?:number })=><svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={fill} strokeWidth="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
@@ -103,16 +104,19 @@ function Sidebar({ ratingFilter,toggleRating,reviewFilter,toggleReview,offerFilt
  
 function ServiceCard({
   service,
+  fav,
+  onToggleFav,
   onClick,
   busy,
   onPrefetch,
 }: {
   service: Seller;
+  fav: boolean;
+  onToggleFav: (service: Seller) => void;
   onClick: () => void;
   busy?: boolean;
   onPrefetch?: () => void;
 }) {
-  const [fav,     setFav]     = useState(false);
   const [imgOk,   setImgOk]   = useState(Boolean(service.image?.trim()));
 
   const handleError = () => {
@@ -153,7 +157,7 @@ function ServiceCard({
         {service.badge&&<div style={{ position:"absolute",top:10,left:10,background:service.badge.bg,color:"#fff",fontSize:10,fontWeight:700,padding:"4px 10px",borderRadius:20,border:"2px solid rgba(255,255,255,0.65)",backdropFilter:"blur(4px)",zIndex:2 }}>{service.badge.label}</div>}
         <div style={{ position:"absolute",bottom:10,left:10,background:"rgba(255,255,255,0.93)",backdropFilter:"blur(4px)",borderRadius:20,padding:"3px 9px",display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:600,color:"#374151",zIndex:2 }}><IC.MapPin/>{service.distance}</div>
         <button
-          onClick={e=>{ e.stopPropagation(); setFav(f=>!f); }}
+          onClick={e=>{ e.stopPropagation(); onToggleFav(service); }}
           style={{ position:"absolute",top:10,right:10,background:"#fff",border:"none",borderRadius:"50%",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 2px 8px rgba(0,0,0,0.14)",zIndex:2 }}
         ><IC.Heart filled={fav}/></button>
       </div>
@@ -170,7 +174,7 @@ function ServiceCard({
           onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.opacity="0.85"}
           onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.opacity="1"}
         >
-          Book Consultant
+          Book service
         </button>
       </div>
     </div>
@@ -203,6 +207,12 @@ export default function ServiceListPage({ onSelectSeller, busyServiceId }: Servi
   const [page,             setPage]             = useState(1);
   const [activeTopFilters, setActiveTopFilters] = useState<string[]>(["Popularity","Rating","Offers","Delivery Time"]);
   const [drawerOpen,       setDrawerOpen]       = useState(false);
+  const [serviceWishlistIds, setServiceWishlistIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const rows = getServiceWishlist();
+    setServiceWishlistIds(new Set(rows.map((row) => String(row.id))));
+  }, []);
 
   useEffect(() => {
     catalogApi.getCategories({ limit: 200, kind: "service" }).then((res) => {
@@ -240,6 +250,7 @@ export default function ServiceListPage({ onSelectSeller, busyServiceId }: Servi
         const meta = (s as { metadata?: Record<string, unknown> }).metadata;
         const vendorFromMeta =
           meta && typeof meta.vendorId === "string" ? meta.vendorId : "";
+        const price = Number((s as any).basePrice ?? (s as any).price ?? (meta && typeof meta.price !== "undefined" ? Number(meta.price) : 0) ?? 0);
         return {
         id: typeof s.id === "number" ? s.id : String(s.id),
         title: s.name,
@@ -247,7 +258,7 @@ export default function ServiceListPage({ onSelectSeller, busyServiceId }: Servi
         provider: s.description ?? s.name,
         description: s.description ?? "",
         rating: 0,
-        price: 0,
+        price: Number.isFinite(price) ? price : 0,
         duration: String((meta && typeof meta.duration === "string" ? meta.duration : "") ?? ""),
         distance: "",
         category: "",
@@ -287,6 +298,25 @@ export default function ServiceListPage({ onSelectSeller, busyServiceId }: Servi
   const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE);
   const sidebarActive = [...ratingFilter.map(r=>`⭐ ${r}+`), ...reviewFilter, ...offerFilter.map(o=>`🏷 ${o}`)];
   const clearAll = () => { setActiveTopFilters([]); setRatingFilter([]); setReviewFilter([]); setOfferFilter([]); setPage(1); };
+  const toggleServiceWishlist = (service: Seller) => {
+    const key = String(service.id);
+    const exists = serviceWishlistIds.has(key);
+    let rows = getServiceWishlist();
+    if (exists) {
+      rows = removeServiceWishlist(key);
+    } else {
+      rows = addServiceWishlist({
+        id: key,
+        title: service.title,
+        image: service.image,
+        provider: service.provider,
+        price: service.price,
+        duration: service.duration,
+        vendorId: service.vendorId,
+      });
+    }
+    setServiceWishlistIds(new Set(rows.map((row) => String(row.id))));
+  };
   const getPages = (): (number | "...")[] => {
     const ps: (number | "...")[] = [];
     for (let i = 1; i <= totalPages; i++) {
@@ -390,6 +420,8 @@ export default function ServiceListPage({ onSelectSeller, busyServiceId }: Servi
                 <ServiceCard
                   key={String(s.id)}
                   service={s}
+                  fav={serviceWishlistIds.has(String(s.id))}
+                  onToggleFav={toggleServiceWishlist}
                   busy={busyServiceId != null && String(busyServiceId) === String(s.id)}
                   onPrefetch={() => void catalogApi.prefetchServiceVendorOffers(String(s.id))}
                   onClick={() => void onSelectSeller(s)}

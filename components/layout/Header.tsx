@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from "react";
 import { useCart } from "@/providers/CartContext";
 import { takePostLoginAction } from "@/lib/postLoginAction";
 import { useAuth } from "@/providers/AuthContext";
+import { profileApi } from "@/lib/api/profile";
 import AuthModal from "@/components/auth/Authmodal";
 import {
   MapPin, Search, ShoppingCart, User, ChevronDown, Menu, X,
@@ -32,6 +33,7 @@ export default function Header({ onCartOpen }: HeaderProps) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isLoginDropdownOpen, setIsLoginDropdownOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [wishlistCount, setWishlistCount] = useState(0);
   const [locationSearch, setLocationSearch] = useState("");
   const { isLoggedIn, loggedPhone, displayName, login, logout: authLogout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,7 +71,7 @@ export default function Header({ onCartOpen }: HeaderProps) {
     { icon: User,    label: "My Profile",     href: "/profile"       },
     { icon: Calendar, label: "My Bookings",   href: "/profile#my-bookings" },
     { icon: Package, label: "Orders",         href: "/orders"        },
-    { icon: Heart,   label: "Wishlist (1)",   href: "/wishlist"      },
+    { icon: Heart,   label: `Wishlist${wishlistCount > 0 ? ` (${wishlistCount})` : ""}`,   href: "/wishlist"      },
     { icon: Gift,    label: "Rewards",        href: "/rewards"       },
     { icon: Crown,   label: "Membership",     href: "/membership"    },
     { icon: Store,   label: "Seller Account", href: "/seller"        },
@@ -103,6 +105,17 @@ export default function Header({ onCartOpen }: HeaderProps) {
     window.addEventListener("p4u-open-auth", openAuthFromApp);
     return () => window.removeEventListener("p4u-open-auth", openAuthFromApp);
   }, []);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setWishlistCount(0);
+      return;
+    }
+    profileApi
+      .getWishlist()
+      .then((rows) => setWishlistCount(rows.length))
+      .catch(() => setWishlistCount(0));
+  }, [isLoggedIn]);
 
   function handleCartClick() {
     if (onCartOpen) {

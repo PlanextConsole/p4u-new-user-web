@@ -7,22 +7,99 @@ import banner2 from "../../images/home-banner/banner2.jpg";
 import banner3 from "../../images/home-banner/banner3.png";
 import { contentApi } from "@/lib/api/content";
 
+type HeroSlide = {
+  image: any;
+  mobileImage?: string;
+  alt: string;
+  subtitle?: string;
+  ctaText?: string;
+  ctaLink?: string;
+  festivalTag?: string;
+  themeHeaderColor?: string;
+  themeBgColor?: string;
+  themeButtonColor?: string;
+  backgroundGradient?: string;
+};
+
 const FALLBACK_SLIDES = [
   { image: banner1, alt: "Banner" },
   { image: banner2, alt: "Banner" },
   { image: banner3, alt: "Banner" },
 ];
 
+function isBannerLive(startDate?: string, endDate?: string): boolean {
+  const now = Date.now();
+  const start = startDate ? new Date(startDate).getTime() : NaN;
+  const end = endDate ? new Date(endDate).getTime() : NaN;
+  if (!Number.isNaN(start) && now < start) return false;
+  if (!Number.isNaN(end) && now > end) return false;
+  return true;
+}
+
+function normalizeCtaLink(
+  redirectType?: string,
+  ctaLink?: string,
+  redirectUrl?: string,
+  redirectId?: string,
+): string | undefined {
+  const link = String(ctaLink || redirectUrl || "").trim();
+  if (link) return link;
+  if (String(redirectType || "").toLowerCase() === "internal" && String(redirectId || "").trim()) {
+    return `/${encodeURIComponent(String(redirectId).trim())}`;
+  }
+  return undefined;
+}
+
 export default function HeroSlider() {
-  const [slides, setSlides] = useState<{ image: any; alt: string }[]>(FALLBACK_SLIDES);
+  const [slides, setSlides] = useState<HeroSlide[]>(FALLBACK_SLIDES);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(true);
   const [slidePosition, setSlidePosition] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   useEffect(() => {
     contentApi.getBanners().then((banners) => {
       if (banners.length) {
-        setSlides(banners.map((b) => ({ image: (b.imageUrl || b.image) as any, alt: b.title ?? "Banner" })));
+        const cmsHero = banners
+          .filter((b) => {
+            const m = b.metadata || {};
+            if (m.homepageCMS !== true) return false;
+            if ((m.cmsSlot || "hero") !== "hero") return false;
+            if ((m.mediaType || "image") !== "image") return false;
+            return isBannerLive(m.startDate, m.endDate);
+          })
+          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+          .map((b) => {
+            const m = b.metadata || {};
+            return {
+              image: (m.desktopImageUrl || b.imageUrl || b.image) as any,
+              mobileImage: m.mobileImageUrl || undefined,
+              alt: b.title ?? "Banner",
+              subtitle: m.subtitle || undefined,
+              ctaText: m.ctaText || undefined,
+              ctaLink: normalizeCtaLink(m.redirectType, m.ctaLink, b.redirectUrl, m.redirectId),
+              festivalTag: m.festivalTag || undefined,
+              themeHeaderColor: m.themeHeaderColor || undefined,
+              themeBgColor: m.themeBgColor || undefined,
+              themeButtonColor: m.themeButtonColor || undefined,
+              backgroundGradient: m.backgroundGradient || undefined,
+            } as HeroSlide;
+          })
+          .filter((s) => Boolean(s.image));
+
+        const fallbackApi = banners
+          .map((b) => ({ image: (b.imageUrl || b.image) as any, alt: b.title ?? "Banner" }))
+          .filter((s) => Boolean(s.image));
+
+        setSlides(cmsHero.length ? cmsHero : (fallbackApi.length ? fallbackApi : FALLBACK_SLIDES));
         setCurrentSlide(0);
         setSlidePosition(0);
       }
@@ -97,15 +174,47 @@ export default function HeroSlider() {
             <div
               key={index}
               className="min-w-full h-full relative flex-shrink-0"
+              style={{
+                backgroundColor: slide.themeBgColor || undefined,
+                background: slide.backgroundGradient || undefined,
+              }}
             >
               <Image
-                src={slide.image}
+                src={isMobile && slide.mobileImage ? slide.mobileImage : slide.image}
                 alt={slide.alt}
                 fill
                 priority={index === 0}
                 className="object-cover object-top rounded-lg sm:rounded-xl md:rounded-2xl"
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 90vw, 1400px"
               />
+              {(slide.subtitle || slide.ctaText || slide.festivalTag) && (
+                <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4 md:p-6 bg-gradient-to-t from-black/55 to-transparent">
+                  {slide.festivalTag && (
+                    <span className="inline-block mb-2 px-2 py-1 rounded-full text-xs font-medium bg-white/85 text-gray-900">
+                      {slide.festivalTag}
+                    </span>
+                  )}
+                  {slide.subtitle && (
+                    <p className="text-white text-xs sm:text-sm md:text-base mb-2" style={{ color: slide.themeHeaderColor || undefined }}>
+                      {slide.subtitle}
+                    </p>
+                  )}
+                  {slide.ctaText && slide.ctaLink && (
+                    <a
+                      href={slide.ctaLink}
+                      target={slide.ctaLink.startsWith("http") ? "_blank" : "_self"}
+                      rel={slide.ctaLink.startsWith("http") ? "noreferrer" : undefined}
+                      className="inline-block px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-semibold transition-opacity hover:opacity-90"
+                      style={{
+                        backgroundColor: slide.themeButtonColor || "#ffffff",
+                        color: "#111827",
+                      }}
+                    >
+                      {slide.ctaText}
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

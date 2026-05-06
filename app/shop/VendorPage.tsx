@@ -10,6 +10,8 @@ import {
 import { useRouter } from "next/navigation";
 import { TEAL_GRADIENT } from "./constants";
 import { catalogApi } from "@/lib/api/catalog";
+import { profileApi } from "@/lib/api/profile";
+import { useAuth } from "@/providers/AuthContext";
 import { Loader2 } from "lucide-react";
 import { pickProductImage, pickVendorImage, resolveMediaUrl } from "@/lib/media";
 import { resolveCatalogDisplayOriginal, resolveCatalogUnitPrice } from "@/lib/catalog/resolvePrice";
@@ -333,18 +335,20 @@ function VendorInfoCardDesktop({ vendor }: { vendor: Vendor }) {
     </div>
   );
 } 
-function ProductCard({ product, onProductClick, vendorId, vendorName, vendorCategory }: {
+function ProductCard({ product, onProductClick, vendorId, vendorName, vendorCategory, liked, wishlistBusy, onToggleWishlist }: {
   product: Product;
   onProductClick: (p: Product) => void;
   vendorId: string;
   vendorName: string;
   vendorCategory: string;
+  liked: boolean;
+  wishlistBusy: boolean;
+  onToggleWishlist: (productId: string | number) => void;
 }) {
   const router = useRouter();
   const { addToCart } = useCart();
   const [qty, setQty] = useState(1);
   const [selectedColor, setSelectedColor] = useState<Color | null>(product.colors?.[0] ?? null);
-  const [liked, setLiked] = useState(false);
 
   function handleAddToCart(e: React.MouseEvent) {
     e.stopPropagation();
@@ -389,7 +393,11 @@ function ProductCard({ product, onProductClick, vendorId, vendorName, vendorCate
           </div>
         )}
         <button
-          onClick={(e) => { e.stopPropagation(); setLiked(!liked); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleWishlist(product.id);
+          }}
+          disabled={wishlistBusy}
           className="absolute top-2 right-2 z-10 bg-white rounded-full p-1.5 shadow-md hover:scale-110 transition-all"
         >
           <Heart size={11} className={liked ? "fill-red-500 text-red-500" : "text-gray-400"} />
@@ -519,6 +527,7 @@ type VendorDetailPageProps = {
 } 
 export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageProps) {
   const router = useRouter();
+  const { isLoggedIn } = useAuth();
   const [activeTab, setActiveTab] = useState(0);
   const [search, setSearch] = useState("");
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
@@ -528,6 +537,8 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
 
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [loadingVendor, setLoadingVendor] = useState(true);
+  const [wishlistIds, setWishlistIds] = useState<Set<string>>(new Set());
+  const [wishlistBusyId, setWishlistBusyId] = useState<string>("");
 
   useEffect(() => {
     if (!vendorId) {
@@ -582,6 +593,42 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
       setVendor(null);
     }).finally(() => setLoadingVendor(false));
   }, [vendorId]);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setWishlistIds(new Set());
+      return;
+    }
+    profileApi
+      .getWishlist()
+      .then((rows) => {
+        setWishlistIds(new Set(rows.map((r) => String(r.productId))));
+      })
+      .catch(() => setWishlistIds(new Set()));
+  }, [isLoggedIn]);
+
+  async function toggleWishlist(productId: string | number) {
+    const key = String(productId);
+    if (wishlistBusyId === key) return;
+    if (!isLoggedIn) {
+      window.dispatchEvent(new Event("p4u-open-auth"));
+      return;
+    }
+    const exists = wishlistIds.has(key);
+    const nextSet = new Set(wishlistIds);
+    if (exists) nextSet.delete(key);
+    else nextSet.add(key);
+    setWishlistIds(nextSet);
+    setWishlistBusyId(key);
+    try {
+      if (exists) await profileApi.removeFromWishlist(productId);
+      else await profileApi.addToWishlist(productId);
+    } catch {
+      setWishlistIds(new Set(wishlistIds));
+    } finally {
+      setWishlistBusyId("");
+    }
+  }
 
   const toggleBrand = (brand: string) =>
     setSelectedBrands((prev) => prev.includes(brand) ? prev.filter((b) => b !== brand) : [...prev, brand]);
@@ -727,6 +774,9 @@ export default function VendorDetailPage({ vendorId, onBack }: VendorDetailPageP
                     vendorId={vendorId}
                     vendorName={vendor.name}
                     vendorCategory={vendor.category}
+                    liked={wishlistIds.has(String(product.id))}
+                    wishlistBusy={wishlistBusyId === String(product.id)}
+                    onToggleWishlist={toggleWishlist}
                     onProductClick={(p) => {
                       router.push(`/shop/${vendorId}/${p.id}`);
                     }}

@@ -1,12 +1,10 @@
 "use client"; 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import ServiceBookingModal from "@/components/booking/ServiceBookingModal";
-import { useCart } from "@/providers/CartContext";
 import { TEAL, TEAL_GRAD, TEAL_DARK, BannerSlide, Vendor, Product } from "./serviceData";
-import { catalogApi, type Vendor as CatalogVendor, type Product as CatalogProduct } from "@/lib/api/catalog";
+import { catalogApi, type Vendor as CatalogVendor, type ServiceItem as CatalogServiceItem } from "@/lib/api/catalog";
 import { commerceApi } from "@/lib/api/commerce";
-import { pickProductImage, pickVendorImage } from "@/lib/media";
-import { resolveCatalogDisplayOriginal, resolveCatalogUnitPrice } from "@/lib/catalog/resolvePrice";
+import { pickServiceImage, pickVendorImage } from "@/lib/media";
 const IC = {
   Star:      ({ fill="#f59e0b",size=13 }:{ fill?:string;size?:number })=><svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={fill} strokeWidth="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
   MapPin:    ()=><svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>,
@@ -271,17 +269,11 @@ function VendorInfoCard({
 } 
 interface ProductCardProps {
   product:    Product;
-  vendorId:   string;
-  vendorName: string;
+  onBook: (product: Product) => void;
 }
 
-function ProductCard({ product, vendorId, vendorName }: ProductCardProps) {
-  const { addToCart, items: cartItems, updateQty } = useCart(); 
-  const cartItem  = cartItems.find(i => String(i.id) === String(product.id) && i.vendorId === vendorId);
-  const qtyInCart = cartItem?.qty ?? 0;
-
+function ProductCard({ product, onBook }: ProductCardProps) {
   const [fav,     setFav]     = useState(false);
-  const [flash,   setFlash]   = useState(false);
   const [imgOk,   setImgOk]   = useState(Boolean(product.image?.trim()));
 
   useEffect(() => {
@@ -291,29 +283,10 @@ function ProductCard({ product, vendorId, vendorName }: ProductCardProps) {
   const handleImgError = () => {
     setImgOk(false);
   }; 
-  const handleAdd = (e: React.MouseEvent) => {
+  const handleBook = (e: React.MouseEvent) => {
     e.stopPropagation();
-    addToCart({
-      id:            product.id,
-      name:          product.name,
-      price:         product.price,
-      originalPrice: product.originalPrice ?? product.price,
-      image:         product.image || "",
-      imageUrl:      product.image || "",
-      vendor:        vendorName,
-      vendorId:      vendorId,
-      delivery:      `Delivery in ${product.duration}`,
-    });
-    setFlash(true);
-    setTimeout(() => setFlash(false), 1400);
+    onBook(product);
   }; 
-  const handleQtyChange = (delta: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!cartItem) return;
-    updateQty(product.id, Math.max(0, cartItem.qty + delta));
-  };
-
-  const inCart = qtyInCart > 0;
 
   return (
     <div
@@ -337,11 +310,6 @@ function ProductCard({ product, vendorId, vendorName }: ProductCardProps) {
         {product.badge && (
           <div style={{ position:"absolute",top:8,left:8,background:"rgba(255,255,255,0.93)",color:TEAL,fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:12,border:`1.5px solid ${TEAL}`,backdropFilter:"blur(4px)",zIndex:2 }}>
             {product.badge}
-          </div>
-        )} 
-        {inCart && (
-          <div style={{ position:"absolute",top:8,left:8,background:TEAL_GRAD,color:"#fff",fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:12,zIndex:3 }}>
-            {qtyInCart} in cart
           </div>
         )} 
         <button
@@ -379,47 +347,23 @@ function ProductCard({ product, vendorId, vendorName }: ProductCardProps) {
         </div>
  
         <div style={{ borderTop:"1px solid #f0f0f0",paddingTop:8,display:"flex",gap:6,alignItems:"center" }}>
-          {inCart ? ( 
-            <>
-              <div style={{ display:"flex",alignItems:"center",border:"1.5px solid #e0e0e0",borderRadius:10,overflow:"hidden",flex:1 }}>
-                <button
-                  onClick={e=>handleQtyChange(-1,e)}
-                  style={{ width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",border:"none",background:"#fff",cursor:"pointer",color:"#374151" }}
-                >
-                  <IC.Minus/>
-                </button>
-                <span style={{ flex:1,textAlign:"center",fontSize:12,fontWeight:700,color:"#111827",borderLeft:"1px solid #e0e0e0",borderRight:"1px solid #e0e0e0",lineHeight:"30px" }}>
-                  {qtyInCart}
-                </span>
-                <button
-                  onClick={e=>handleQtyChange(+1,e)}
-                  style={{ width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",border:"none",background:"#fff",cursor:"pointer",color:"#374151" }}
-                >
-                  <IC.Plus/>
-                </button>
-              </div>
-              <button
-                onClick={handleAdd}
-                style={{ width:30,height:30,border:"none",borderRadius:10,background:TEAL_GRAD,color:"#fff",fontSize:16,fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}
-              >
-                +
-              </button>
-            </>
-          ) : ( 
-            <button
-              onClick={handleAdd}
-              style={{
-                flex:1, height:30, border:`1.5px solid ${flash?"transparent":"#e0e0e0"}`,
-                borderRadius:10,
-                background: flash ? TEAL_GRAD : "#fff",
-                color: flash ? "#fff" : "#374151",
-                fontSize:11, fontWeight:700, cursor:"pointer",
-                transition:"all .2s",
-              }}
-            >
-              {flash ? "✓ Added!" : "Add to cart"}
-            </button>
-          )}
+          <button
+            onClick={handleBook}
+            style={{
+              flex: 1,
+              height: 30,
+              border: "1.5px solid #e0e0e0",
+              borderRadius: 10,
+              background: "#fff",
+              color: "#374151",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+              transition: "all .2s",
+            }}
+          >
+            Book service
+          </button>
         </div>
       </div>
     </div>
@@ -471,29 +415,36 @@ const EMPTY_REVIEW_SUMMARY: ReviewSummaryShape = {
   breakdown: {},
 };
 
-function mapCatalogProducts(products: CatalogProduct[]): Product[] {
-  return products.map((p) => {
-    const row = p as unknown as Record<string, unknown>;
-    const unit = resolveCatalogUnitPrice(row);
+function mapCatalogServices(
+  services: CatalogServiceItem[],
+  offeredPriceByServiceId: Map<string, number>,
+): Product[] {
+  return services.map((s) => {
+    const sid = String(s.id);
+    const raw =
+      offeredPriceByServiceId.get(sid) ??
+      Number(s.basePrice ?? s.price ?? s.metadata?.price ?? 0);
+    const unit = Number.isFinite(raw) ? Number(raw) : 0;
     return {
-    id: p.id,
-    name: p.name,
-    brand: (p.metadata?.brand as string) ?? "",
-    price: unit,
-    originalPrice: resolveCatalogDisplayOriginal(row, unit),
-    rating: 0,
-    reviews: 0,
-    image: pickProductImage(p as any) || "",
-    description: p.description ?? "",
-    duration: "—",
-    category: "General",
-  };
+      id: s.id,
+      name: s.name || "Service",
+      brand: "",
+      price: unit,
+      originalPrice: unit,
+      rating: 0,
+      reviews: 0,
+      image: pickServiceImage(s as any) || "",
+      description: s.description ?? "",
+      duration: String(s.duration || "—"),
+      category: "Service",
+    };
   });
 }
 
 function buildVendorState(
   v: CatalogVendor,
-  catalogProducts: CatalogProduct[],
+  catalogServices: CatalogServiceItem[],
+  offeredPriceByServiceId: Map<string, number>,
   summary: ReviewSummaryShape,
 ): Vendor {
   const logoResolved = pickVendorImage(v as any)?.trim();
@@ -520,7 +471,7 @@ function buildVendorState(
     distance: "—",
     banners: defaultBanners(v.name ?? "Vendor", bannerIcon),
     tabs: ["Services", "About", "Gallery"],
-    products: mapCatalogProducts(catalogProducts),
+    products: mapCatalogServices(catalogServices, offeredPriceByServiceId),
   };
 }
 
@@ -557,6 +508,11 @@ export default function VendorDetailPage({
   const [loadingVendor, setLoadingVendor] = useState(true);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [bookingOpen, setBookingOpen] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<{
+    serviceId: string;
+    title: string;
+    price: number;
+  } | null>(null);
   const autoOpenedRef = useRef(false);
 
   useEffect(() => {
@@ -579,17 +535,49 @@ export default function VendorDetailPage({
       .getVendor(catalogId)
       .then((v) => {
         if (cancelled) return;
-        setVendor(buildVendorState(v, [], EMPTY_REVIEW_SUMMARY));
+        setVendor(buildVendorState(v, [], new Map<string, number>(), EMPTY_REVIEW_SUMMARY));
         setLoadingVendor(false);
         return Promise.all([
-          catalogApi.getVendorProducts(catalogId, { limit: 50 }),
+          catalogApi.getServices({ limit: 200 }),
           commerceApi.getReviewSummary("vendor", catalogId).catch(() => EMPTY_REVIEW_SUMMARY),
-        ]).then(([productsRes, summary]) => ({ v, productsRes, summary }));
+        ]).then(([servicesRes, summary]) => ({ v, servicesRes, summary }));
       })
-      .then((pack) => {
+      .then(async (pack) => {
         if (cancelled || !pack) return;
-        const { v, productsRes, summary } = pack;
-        setVendor(buildVendorState(v, productsRes.data ?? [], summary));
+        const { v, servicesRes, summary } = pack;
+        const allServices = servicesRes.data ?? [];
+        const vendorIdStr = String(v.id);
+
+        // Prefer direct mapping from service row; fallback to offer mapping.
+        let vendorServices = allServices.filter((s) => {
+          const direct = String(s.vendorId ?? "").trim();
+          const meta = (s.metadata ?? {}) as Record<string, unknown>;
+          const fromMeta = String(meta.vendorId ?? "").trim();
+          return direct === vendorIdStr || fromMeta === vendorIdStr;
+        });
+        const offeredPriceByServiceId = new Map<string, number>();
+
+        if (vendorServices.length === 0) {
+          const matched = await Promise.all(
+            allServices.map(async (service) => {
+              try {
+                const offers = await catalogApi.getServiceVendorOffers(String(service.id));
+                const mine = offers.find((o) => String(o.vendor?.id ?? "") === vendorIdStr);
+                if (!mine) return null;
+                const offerPrice = Number(mine.price || 0);
+                if (Number.isFinite(offerPrice) && offerPrice > 0) {
+                  offeredPriceByServiceId.set(String(service.id), offerPrice);
+                }
+                return service;
+              } catch {
+                return null;
+              }
+            }),
+          );
+          vendorServices = matched.filter((x): x is CatalogServiceItem => Boolean(x));
+        }
+
+        setVendor(buildVendorState(v, vendorServices, offeredPriceByServiceId, summary));
       })
       .catch(() => {
         if (!cancelled) setVendor(null);
@@ -676,6 +664,17 @@ export default function VendorDetailPage({
       ? `Book now @ ₹${Math.round(prefillPrice)}`
       : "Book service";
 
+  const handleQuickAddFromHeader = () => setBookingOpen(true);
+
+  const handleBookService = (product: Product) => {
+    setSelectedBooking({
+      serviceId: String(product.id),
+      title: product.name,
+      price: Number.isFinite(product.price) ? product.price : 0,
+    });
+    setBookingOpen(true);
+  };
+
   if (loadingVendor && !vendor) {
     return (
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
@@ -746,10 +745,16 @@ export default function VendorDetailPage({
           <ProductGridSkeleton />
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ padding:"60px 20px",textAlign:"center",color:"#9ca3af",fontSize:14 }}>No products found. Try adjusting your filters.</div>
+        <div style={{ padding:"60px 20px",textAlign:"center",color:"#9ca3af",fontSize:14 }}>No services found. Try adjusting your filters.</div>
       ) : (
         <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:14 }}>
-          {filtered.map(p=><ProductCard key={p.id} product={p} vendorId={vendor.id} vendorName={vendor.name}/>)}
+          {filtered.map((p) => (
+            <ProductCard
+              key={p.id}
+              product={p}
+              onBook={handleBookService}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -811,7 +816,7 @@ export default function VendorDetailPage({
  
         <VendorInfoCard
           vendor={vendor}
-          onBookNow={() => setBookingOpen(true)}
+          onBookNow={handleQuickAddFromHeader}
           bookNowLabel={bookNowLabel}
         /> 
         <div style={{ background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)",border:"1px solid #f0f0f0" }}>
@@ -834,9 +839,9 @@ export default function VendorDetailPage({
         open={bookingOpen}
         onClose={() => setBookingOpen(false)}
         vendorId={vendor.id}
-        catalogServiceId={prefillServiceId}
-        serviceTitle={prefillServiceTitle}
-        priceHint={prefillPrice}
+        catalogServiceId={selectedBooking?.serviceId ?? prefillServiceId}
+        serviceTitle={selectedBooking?.title ?? prefillServiceTitle}
+        priceHint={selectedBooking?.price ?? prefillPrice}
       />
       {filterDrawerOpen&&(
         <div style={{ position:"fixed",inset:0,zIndex:400 }}>

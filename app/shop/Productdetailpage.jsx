@@ -9,6 +9,37 @@ import {
 import { useCart } from "@/providers/CartContext";
 import { useAuth } from "@/providers/AuthContext";
 import { buildProductGalleryImages, resolveMediaUrl } from "@/lib/media";
+import { profileApi } from "@/lib/api/profile";
+
+function parseAttributeOptions(raw) {
+  if (!raw || typeof raw !== "object") return [];
+  return Object.entries(raw).flatMap(([name, vals]) => {
+    const arr = Array.isArray(vals) ? vals : vals ? [vals] : [];
+    return arr.map((v) => {
+      const s = String(v || "").trim();
+      const m = s.match(/^(.*?)(#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$/);
+      const label = m ? String(m[1] || "").trim() : s;
+      const hex = m ? m[2] : null;
+      return { name, label: label || s, raw: s, hex };
+    });
+  });
+}
+
+function formatAttributeMap(raw) {
+  if (!raw || typeof raw !== "object") return {};
+  return Object.entries(raw).reduce((acc, [k, vals]) => {
+    const arr = Array.isArray(vals) ? vals : vals ? [vals] : [];
+    const pretty = arr
+      .map((v) => {
+        const s = String(v || "").trim();
+        const m = s.match(/^(.*?)(#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}))$/);
+        return (m ? String(m[1] || "").trim() : s) || s;
+      })
+      .filter(Boolean);
+    if (pretty.length) acc[k] = pretty.join(", ");
+    return acc;
+  }, {});
+}
 
 function enrich(p) {
   if (!p) return {};
@@ -101,6 +132,19 @@ function enrich(p) {
     ...(p.reviews ? { "Total Reviews": String(p.reviews) } : {}),
     ...(p.specs || {}),
   };
+  const metadataAttrs =
+    (p.specs && (p.specs.productAttributes || p.specs.attributes)) ||
+    p.productAttributes ||
+    {};
+  const normalizedAttrMap = formatAttributeMap(metadataAttrs);
+  const colorOptions = parseAttributeOptions(metadataAttrs)
+    .filter((a) => String(a.name || "").toLowerCase() === "color")
+    .map((a) => ({ name: a.label, hex: a.hex || "#d1d5db" }));
+  const dynamicSizes =
+    parseAttributeOptions(metadataAttrs)
+      .filter((a) => String(a.name || "").toLowerCase() === "size")
+      .map((a) => a.label)
+      .filter(Boolean) || [];
 
   const description = (p.description && p.description.trim())
     ? p.description
@@ -144,7 +188,19 @@ function enrich(p) {
 
   const availableOffers = p.availableOffers || [];
 
-  return { ...p, specs, description, ratingBreakdown, reviewsList, images, availableOffers, originalPrice };
+  return {
+    ...p,
+    specs: { ...specs, ...normalizedAttrMap },
+    description,
+    ratingBreakdown,
+    reviewsList,
+    images,
+    availableOffers,
+    originalPrice,
+    productAttributes: normalizedAttrMap,
+    colors: colorOptions.length ? colorOptions : p.colors,
+    sizes: dynamicSizes.length ? dynamicSizes : p.sizes,
+  };
 }
 
 function Stars({ rating, size = 12 }) {
@@ -164,7 +220,7 @@ function Stars({ rating, size = 12 }) {
 export default function ProductDetailPage({ product: rawProduct, onBack }) {
   const router = useRouter();
   const product = useMemo(() => enrich(rawProduct), [rawProduct]);
-  const { addToCart } = useCart();
+  const { addToCart, clearCart } = useCart();
   const { isLoggedIn } = useAuth();
 
   const [mainImg, setMainImg] = useState(0);
@@ -172,6 +228,7 @@ export default function ProductDetailPage({ product: rawProduct, onBack }) {
   const [selectedSize, setSelectedSize] = useState(product.sizes?.[0] || null);
   const [qty, setQty] = useState(1);
   const [liked, setLiked] = useState(false);
+  const [wishlistBusy, setWishlistBusy] = useState(false);
   const [activeTab, setActiveTab] = useState("Description");
   const [helpfulClicked, setHelpfulClicked] = useState({});
   const [reviewFilter, setReviewFilter] = useState("All Reviews");
@@ -179,8 +236,30 @@ export default function ProductDetailPage({ product: rawProduct, onBack }) {
   const [showAllSpecs, setShowAllSpecs] = useState(false);
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // Keep navigation snappy when opening product pages repeatedly.
+    window.scrollTo({ top: 0, behavior: "auto" });
   }, [rawProduct]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!isLoggedIn || !product?.id) {
+      setLiked(false);
+      return;
+    }
+    profileApi
+      .getWishlist()
+      .then((rows) => {
+        if (!mounted) return;
+        const found = rows.some((r) => String(r.productId) === String(product.id));
+        setLiked(found);
+      })
+      .catch(() => {
+        if (mounted) setLiked(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [isLoggedIn, product?.id]);
 
   const { specs, description, ratingBreakdown, reviewsList, images, availableOffers, originalPrice } = product;
   const discount = originalPrice > product.price ? Math.round((1 - product.price / originalPrice) * 100) : 0;
@@ -213,16 +292,58 @@ export default function ProductDetailPage({ product: rawProduct, onBack }) {
   }
 
   function handleBuyNow() {
-    handleAddToCart();
+    const buyNowItem = {
+      id: product.id,
+      productId: product.id,
+      name: product.name,
+      price: product.price,
+      originalPrice: product.originalPrice || product.price,
+      imageUrl: images?.[0] || "",
+      image: product.image || "",
+      vendor: product.vendor || "Seller",
+      vendorId: product.vendorId || "",
+      color: selectedColor?.name || product.color || "",
+      qty: 1,
+      delivery: product.delivery || "Delivery in 30 Mins",
+    };
     if (!isLoggedIn) {
       window.dispatchEvent(new Event("p4u-open-auth"));
       return;
     }
-    router.push("/checkout");
+    // Buy Now should open the same checkout experience as cart,
+    // but with this product as the only checkout item.
+    clearCart();
+    addToCart(buyNowItem);
+    try {
+      sessionStorage.setItem("openCart", "1");
+    } catch {
+      // ignore storage failures and still navigate
+    }
+    router.push("/cart");
+  }
+
+  async function toggleWishlist() {
+    if (!product?.id || wishlistBusy) return;
+    if (!isLoggedIn) {
+      window.dispatchEvent(new Event("p4u-open-auth"));
+      return;
+    }
+    const next = !liked;
+    setLiked(next);
+    setWishlistBusy(true);
+    try {
+      if (next) await profileApi.addToWishlist(product.id);
+      else await profileApi.removeFromWishlist(product.id);
+    } catch {
+      setLiked(!next);
+    } finally {
+      setWishlistBusy(false);
+    }
   }
 
   const specEntries = specs ? Object.entries(specs) : [];
   const visibleSpecs = showAllSpecs ? specEntries : specEntries.slice(0, 7);
+  const attrEntries = product.productAttributes ? Object.entries(product.productAttributes) : [];
 
   return (
     <div >
@@ -299,7 +420,8 @@ export default function ProductDetailPage({ product: rawProduct, onBack }) {
                     </button>
                   </>
                 )} 
-                <button onClick={() => setLiked(!liked)}
+                <button onClick={toggleWishlist}
+                  disabled={wishlistBusy}
                   style={{ position: "absolute", top: 8, right: 8, background: "white", border: "none", borderRadius: "50%", width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(0,0,0,0.15)" }}>
                   <Heart size={15} style={{ fill: liked ? "#ff3c3c" : "none", color: liked ? "#ff3c3c" : "#878787" }} />
                 </button>
@@ -439,6 +561,21 @@ export default function ProductDetailPage({ product: rawProduct, onBack }) {
                 </ul>
               </div>
             </div>
+            {attrEntries.length > 0 && (
+              <div style={{ marginBottom: 16, borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
+                <div style={{ display: "flex", gap: 16 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#212121", minWidth: 80, paddingTop: 2 }}>Attributes</span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {attrEntries.map(([k, v]) => (
+                      <div key={`attr-${k}`} style={{ fontSize: 13, color: "#212121", display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ color: "#878787", minWidth: 90 }}>{k}:</span>
+                        <span>{String(v)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Delivery + Services */}
             <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>

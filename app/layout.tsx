@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google';
 import { CartProvider } from "@/providers/CartContext";
 import { AuthProvider } from "@/providers/AuthContext";
 import { AppLoadingProvider } from "@/providers/AppLoadingProvider";
+import GlobalPopupBanner from "@/components/content/GlobalPopupBanner";
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AuthProvider>
             <CartProvider>
               {children}
+              <GlobalPopupBanner />
             </CartProvider>
           </AuthProvider>
         </AppLoadingProvider>

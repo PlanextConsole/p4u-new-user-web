@@ -5,7 +5,7 @@ import { Heart, Clock, Star } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { catalogApi } from "@/lib/api/catalog";
-import { pickProductImage, pickServiceImage } from "@/lib/media";
+import { pickServiceImage, resolveMediaUrl } from "@/lib/media";
 import { resolveCatalogUnitPrice } from "@/lib/catalog/resolvePrice";
 
 import lamp from "../../images/home-services/lamp.png";
@@ -160,18 +160,18 @@ export default function ServiceComponents() {
 
   useEffect(() => {
     catalogApi
-      .browseProducts({ limit: 8, offset: 0 })
+      .getServices({ limit: 8, offset: 0 })
       .then((res) => {
         if (!res?.data?.length) return;
         setHomeServices(
-          res.data.map((p, idx) => {
-            const unit = resolveCatalogUnitPrice(p as unknown as Record<string, unknown>);
+          res.data.map((s, idx) => {
+            const unit = Number((s as any).basePrice ?? (s as any).price ?? (s as any).metadata?.price ?? 0);
             return {
-              id: String(p.id ?? idx),
-              vendorId: String(p.vendorId ?? ""),
-              name: p.name,
+              id: String(s.id ?? idx),
+              vendorId: String((s as any).vendorId ?? ""),
+              name: s.name,
               price: unit > 0 ? `₹${unit.toLocaleString("en-IN")}` : "",
-              image: pickProductImage(p as any) || HOME_IMG_MAP[idx % 8] || sofa,
+              image: pickServiceImage(s as any) || HOME_IMG_MAP[idx % 8] || sofa,
             };
           }),
         );
@@ -228,11 +228,14 @@ export default function ServiceComponents() {
                   <Heart className="w-3.5 h-3.5 lg:w-4 lg:h-4 text-gray-400" />
                 </button>
 
-                <Image
-                  src={service.image}
+                <img
+                  src={
+                    typeof service.image === "string"
+                      ? (resolveMediaUrl(service.image) || service.image)
+                      : ((service.image as any)?.src || "")
+                  }
                   alt={service.title}
-                  fill
-                  className="object-cover"
+                  className="w-full h-full object-cover"
                 />
  
                 <div className="absolute bottom-2 left-2 flex items-center gap-1 bg-white rounded px-1.5 py-0.5 shadow-sm">
@@ -313,11 +316,7 @@ export default function ServiceComponents() {
             <div
               key={service.id}
               onClick={() => {
-                if (service.vendorId) {
-                  router.push(`/shop/${service.vendorId}/${service.id}`);
-                } else {
-                  router.push("/shop");
-                }
+                router.push("/service");
               }}
               className="bg-white rounded-lg p-3 sm:p-4 lg:p-4 hover:shadow-md transition-shadow border border-gray-200 cursor-pointer min-h-[170px]"
             >
@@ -332,12 +331,14 @@ export default function ServiceComponents() {
                   </p>
                 </div>
                 <div className="flex-1 flex items-center justify-end">
-                  <Image
-                    src={service.image}
+                  <img
+                    src={
+                      typeof service.image === "string"
+                        ? (resolveMediaUrl(service.image) || service.image)
+                        : ((service.image as any)?.src || "")
+                    }
                     alt={service.name}
-                    className="object-contain max-w-full max-h-full"
-                    width={90}
-                    height={90}
+                    className="object-contain max-w-full max-h-full w-[90px] h-[90px]"
                   />
                 </div>
               </div>

@@ -121,11 +121,14 @@ function firstOrderLineTitle(lines: { metadata?: unknown; productId?: unknown }[
   const m = lines[0]?.metadata;
   if (m && typeof m === "object") {
     const n = (m as Record<string, unknown>).productName;
-    if (typeof n === "string" && n.trim()) return n.trim();
+    if (typeof n === "string" && n.trim()) {
+      const title = n.trim();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(title);
+      const isUnsafeFallback = /^product\s*#\s*[0-9a-f-]{8,}$/i.test(title);
+      if (!isUuid && !isUnsafeFallback) return title;
+    }
   }
-  const pid = lines[0]?.productId;
-  if (pid != null && String(pid).trim()) return `Product #${pid}`;
-  return `Order #${orderRef}`;
+  return `Order ${orderRef.slice(0, 8)}`;
 }
 
 function ProductImg({ src, alt, className = "" }: { src: string; alt: string; className?: string }) {

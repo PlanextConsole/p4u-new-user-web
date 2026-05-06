@@ -1,10 +1,9 @@
 "use client";
 import { ChevronLeft, ChevronRight, Star, MapPin, Clock } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { catalogApi } from "@/lib/api/catalog";
-import { pickVendorImage } from "@/lib/media";
+import { pickVendorImage, resolveMediaUrl } from "@/lib/media";
 import plumbing1 from "../../images/top-servicer/plumbing1.png";
 import plumbing2 from "../../images/top-servicer/plumbing2.png";
 import wedding1 from "../../images/top-servicer/wedding1.png";
@@ -137,11 +136,14 @@ export default function TopServicer() {
                   className="flex-shrink-0 w-[260px] sm:w-[340px] lg:w-[400px] bg-white rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] cursor-pointer"
                 > 
                   <div className="relative h-[160px] sm:h-[200px] lg:h-[220px]">
-                    <Image
-                      src={service.image}
+                    <img
+                      src={
+                        typeof service.image === "string"
+                          ? (resolveMediaUrl(service.image) || service.image)
+                          : ((service.image as any)?.src || "")
+                      }
                       alt={service.title}
-                      fill
-                      className="object-cover"
+                      className="w-full h-full object-cover"
                     />
                     {service.badge && (
                       <div
@@ -224,7 +226,7 @@ export default function TopServicer() {
       "radial-gradient(ellipse at 60% 25%, #1a4a3a 0%, #0E221F 55%, #081812 100%)",
   }}
 >
-  Book Consultant @₹{service.price}
+  Book now
 </button>
 
 
